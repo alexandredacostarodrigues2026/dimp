@@ -4,6 +4,7 @@ import csv
 import io
 import logging
 import os
+import zipfile
 from collections import Counter
 from dataclasses import fields, is_dataclass
 from pathlib import Path
@@ -82,14 +83,38 @@ def gerar_csv(linhas: list[dict[str, Any]]) -> bytes:
     return buf.getvalue().encode("utf-8-sig")
 
 
+def _extrair_txt_do_zip(dados: bytes) -> tuple[bytes, str]:
+    with zipfile.ZipFile(io.BytesIO(dados)) as z:
+        txts = sorted(
+            [i for i in z.infolist() if i.filename.lower().endswith(".txt")],
+            key=lambda i: i.file_size,
+            reverse=True,
+        )
+        if not txts:
+            raise ValueError("Nenhum arquivo .txt encontrado no ZIP.")
+        entrada = txts[0]
+        return z.read(entrada.filename), entrada.filename
+
+
 def caminho_origem() -> tuple[str, str]:
-    arquivo = st.sidebar.file_uploader("Arquivo DIMP", type=("txt",), accept_multiple_files=False)
+    arquivo = st.sidebar.file_uploader("Arquivo DIMP", type=("txt", "zip"), accept_multiple_files=False)
     if arquivo is None:
         return str(ARQUIVO_EXEMPLO), ARQUIVO_EXEMPLO.name
 
+    dados = bytes(arquivo.getbuffer())
+    nome = arquivo.name
+
+    if nome.lower().endswith(".zip"):
+        try:
+            dados, nome_interno = _extrair_txt_do_zip(dados)
+            nome = f"{nome} → {nome_interno}"
+        except Exception as exc:
+            st.error(f"Erro ao extrair ZIP: {exc}")
+            st.stop()
+
     with NamedTemporaryFile(delete=False, suffix=".txt") as temporario:
-        temporario.write(arquivo.getbuffer())
-        return temporario.name, arquivo.name
+        temporario.write(dados)
+        return temporario.name, nome
 
 
 st.set_page_config(page_title="Consulta DIMP", layout="wide")
