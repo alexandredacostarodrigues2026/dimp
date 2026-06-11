@@ -17,9 +17,12 @@ import streamlit as st
 
 from processar_dimp import (
     EventoDimp,
+    Registro00000,
+    Registro0000,
     Registro1100,
     Registro1110,
     Registro1115,
+    chave_00000,
     chave_1100,
     chave_1110,
     parse_dimp,
@@ -40,7 +43,7 @@ ARQUIVO_EXEMPLO = Path(os.environ.get("DIMP_ARQUIVO_EXEMPLO", _ARQUIVO_EXEMPLO_P
 REGISTROS_ALVO = ("00000", "0000", "0100", "0200", "1100", "1110", "1115")
 
 
-def serializar_registro(evento: EventoDimp) -> dict[str, Any]:
+def serializar_registro(evento: EventoDimp, ultimo_chave_00000: str = "") -> dict[str, Any]:
     registro = evento.registro
     if is_dataclass(registro):
         dados = {
@@ -48,8 +51,11 @@ def serializar_registro(evento: EventoDimp) -> dict[str, Any]:
             for f in fields(registro)
             if not is_dataclass(getattr(registro, f.name))
         }
-        # Injeta chaves de ligação como FK explícita nos registros filhos
-        if isinstance(registro, Registro1100):
+        if isinstance(registro, Registro00000):
+            dados["chave_00000"] = chave_00000(registro)
+        elif isinstance(registro, Registro0000):
+            dados["chave_pai_00000"] = ultimo_chave_00000
+        elif isinstance(registro, Registro1100):
             dados["chave_1100"] = chave_1100(registro)
         elif isinstance(registro, Registro1110):
             dados["chave_pai_1100"] = chave_1100(registro.pai_1100)
@@ -67,11 +73,15 @@ def serializar_registro(evento: EventoDimp) -> dict[str, Any]:
 def carregar_eventos(caminho: str, limite: int) -> tuple[dict[str, list[dict[str, Any]]], dict[str, int]]:
     contagem: Counter[str] = Counter()
     tabelas: dict[str, list[dict[str, Any]]] = {reg: [] for reg in REGISTROS_ALVO}
+    chave_tx_ativa = ""
 
     for evento in parse_dimp(Path(caminho)):
         contagem[evento.reg] += 1
         if evento.reg in REGISTROS_ALVO and len(tabelas[evento.reg]) < limite:
-            tabelas[evento.reg].append(serializar_registro(evento))
+            row = serializar_registro(evento, chave_tx_ativa)
+            if evento.reg == "00000":
+                chave_tx_ativa = row.get("chave_00000", "")
+            tabelas[evento.reg].append(row)
 
     return tabelas, dict(contagem)
 
@@ -137,8 +147,7 @@ def _listar_extraidos() -> list[Path]:
     if not PASTA_EXTRAIDOS.exists():
         return []
     return sorted(
-        p for pasta in PASTA_EXTRAIDOS.iterdir() if pasta.is_dir()
-        for p in pasta.glob("*.txt")
+        p for p in PASTA_EXTRAIDOS.glob("*.txt")
         if p.stat().st_size > 10_000
     )
 
