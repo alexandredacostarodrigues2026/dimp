@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import io
 import logging
+import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -10,6 +11,15 @@ from typing import Dict, Generator, Iterable, Optional
 
 
 LOG = logging.getLogger("dimp")
+
+_RE_DT_TRANSMISSAO = re.compile(r"\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}")
+
+
+def _extrair_dt_transmissao(caminho: Path) -> str:
+    with io.open(caminho, mode="r", encoding="ISO-8859-1", errors="replace") as f:
+        primeira_linha = f.readline()
+    m = _RE_DT_TRANSMISSAO.search(primeira_linha)
+    return m.group(0) if m else ""
 
 
 def campo(campos: list[str], indice: int, padrao: str = "") -> str:
@@ -46,9 +56,10 @@ class Registro0000:
     dt_fin: str
     situacao: str
     competencia: str
+    dt_transmissao: str
 
     @classmethod
-    def from_campos(cls, campos: list[str]) -> "Registro0000":
+    def from_campos(cls, campos: list[str], dt_transmissao: str) -> "Registro0000":
         return cls(
             versao=campo(campos, 1),
             finalidade=campo(campos, 2),
@@ -59,6 +70,7 @@ class Registro0000:
             dt_fin=campo(campos, 7),
             situacao=campo(campos, 8),
             competencia=campo(campos, 9),
+            dt_transmissao=dt_transmissao,
         )
 
 
@@ -257,13 +269,14 @@ def iter_linhas_dimp(caminho: Path) -> Generator[tuple[int, list[str]], None, No
 
 def parse_dimp(caminho: Path) -> Generator[EventoDimp, None, EstadoDimp]:
     estado = EstadoDimp()
+    dt_transmissao = _extrair_dt_transmissao(caminho)
 
     for numero_linha, campos in iter_linhas_dimp(caminho):
         reg = campos[0]
 
         try:
             if reg == "0000":
-                estado.abertura = Registro0000.from_campos(campos)
+                estado.abertura = Registro0000.from_campos(campos, dt_transmissao)
                 yield EventoDimp(numero_linha, reg, estado.abertura)
 
             elif reg == "0100":
