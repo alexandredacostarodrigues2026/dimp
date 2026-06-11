@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-06-11 — Cópia automática para raiz de extraidos e chaves de hierarquia completas
+
+### `app.py`
+- **Cópia automática ao extrair**: ao clicar "Extrair", o `*-001.txt` é copiado para a raiz de `extraidos/` (ex: `W0119310-001.txt`) sem intervenção manual.
+- **`_listar_extraidos`**: passa a listar `.txt` diretamente na raiz de `extraidos/` (não mais nos subdiretórios). Fonte de dados do app aponta para `C:\Users\alexandre.rodrigues\Documents\AI_DIMP\extraidos`.
+- **Registro `00000`** recebe campo `chave_00000 = dt_tx|hora_tx` na serialização.
+- **Registro `0000`** recebe campo `chave_pai_00000` linkando ao `00000` pai.
+- Imports organizados no topo (`re`, `shutil` saem dos imports inline para o cabeçalho do módulo).
+
+### `processar_dimp.py`
+- Nova função `chave_00000(r: Registro00000) -> str` — retorna `dt_tx|hora_tx`.
+
+---
+
 ## 2026-06-11 — Registro 00000 (transmissão) e extração de protocolo ELP
 
 ### Contexto

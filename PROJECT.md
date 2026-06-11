@@ -13,6 +13,8 @@ AI_DIMP/
 ├── iniciar.bat             # Atalho para iniciar o app (duplo clique)
 ├── PROJECT.md              # Este arquivo — documentação do projeto
 ├── UPDATES.md              # Histórico de atualizações
+├── originais/              # ZIPs recebidos das instituições de pagamento
+├── extraidos/              # TXTs extraídos para análise (raiz = arquivos de referência rápida)
 ├── CONFAZ/                 # Documentação oficial do leiaute DIMP
 └── docs/dimp_metadata/     # Dicionário de campos por registro
 ```
@@ -28,11 +30,16 @@ streamlit run app.py
 
 Acessa em: `http://localhost:8501`
 
-## Variáveis de Ambiente
+## Fluxo de Extração de ZIP
 
-| Variável | Padrão | Descrição |
-|---|---|---|
-| `DIMP_ARQUIVO_EXEMPLO` | arquivo PicPay incluído no repo | Arquivo carregado automaticamente se nenhum for enviado via upload |
+1. Colocar o ZIP recebido da IP em `originais/`
+2. No app, painel **Extração de ZIP** → selecionar o ZIP → clicar **Extrair**
+3. O app automaticamente:
+   - Extrai para `extraidos/<nome_zip>/`
+   - Prepende o conteúdo do `.elp` (cabeçalho de protocolo) ao `.txt` principal
+   - Insere a linha `|00000|dt_tx|hora_tx|` antes do primeiro `|0000|`
+   - Copia o `*-001.txt` para a raiz de `extraidos/` (ex: `W0119310-001.txt`)
+4. O arquivo copiado aparece imediatamente no seletor **Fonte de dados**
 
 ## Formato do Arquivo DIMP
 
@@ -40,25 +47,34 @@ Texto pipe-delimited (`|`), encoding **ISO-8859-1**. Cada linha começa e termin
 
 ### Registros suportados
 
-| Registro | Descrição |
-|---|---|
-| `0000` | Cabeçalho — identifica a instituição de pagamento e o período |
-| `0100` | Cadastro de clientes (CPF / CNPJ) |
-| `0200` | Meios de captura (maquininhas) |
-| `1100` | Resumo mensal por cliente |
-| `1110` | Resumo diário dentro do `1100` |
-| `1115` | Transações individuais (NSU, valor, natureza) |
+| Registro | Descrição | Chave de ligação |
+|---|---|---|
+| `00000` | Transmissão — data e hora extraídas do protocolo ELP | `chave_00000 = dt_tx\|hora_tx` |
+| `0000` | Cabeçalho — IP declarante, período | FK: `chave_pai_00000` |
+| `0100` | Cadastro de clientes (CPF / CNPJ) | — |
+| `0200` | Meios de captura (maquininhas) | — |
+| `1100` | Resumo mensal por cliente | `chave_1100 = cod_cliente\|dt_ini\|dt_fin` |
+| `1110` | Resumo diário dentro do `1100` | FK: `chave_pai_1100`; `chave_1110 = chave_1100\|cod_mcapt\|dt_operacao` |
+| `1115` | Transações individuais (NSU, valor, natureza) | FK: `chave_pai_1110`, `chave_pai_1100` |
 
 ### Hierarquia
 
 ```
-0000 (1 por arquivo)
-└── 0100* (n clientes)
-└── 0200* (n meios de captura)
-└── 1100* (n resumos mensais)
-    └── 1110* (n resumos diários)
-        └── 1115* (n transações)
+00000 (1 por arquivo — data/hora de transmissão)
+└── 0000 (1 por arquivo — cabeçalho da IP)
+    ├── 0100* (n clientes)
+    ├── 0200* (n meios de captura)
+    └── 1100* (n resumos mensais)
+        └── 1110* (n resumos diários)
+            └── 1115* (n transações)
 ```
+
+### Registro 00000 — origem do dt_tx
+
+O campo `dt_tx` (data de transmissão) e `hora_tx` são extraídos em cascata:
+1. String de protocolo `P<num>(AAAAMMDD)(HHMMSS)W` na primeira linha do arquivo (`.elp` prepended)
+2. Data formatada `YYYY/MM/DD HH:MM:SS` no cabeçalho
+3. Padrão `DD-MM-YYYY_HHMMSS` no nome do caminho do arquivo
 
 ## Módulo `processar_dimp.py`
 
@@ -75,6 +91,13 @@ for evento in parse_dimp(Path("arquivo.txt")):
 Valida automaticamente a soma de `1115` dentro de cada `1110`, e a soma de `1110` dentro de cada `1100`, emitindo `WARNING` em caso de divergência.
 
 Linhas malformadas são ignoradas com `WARNING` em vez de abortar o arquivo.
+
+## Arquivos de análise disponíveis
+
+| Arquivo | IP | Competência |
+|---|---|---|
+| `extraidos/W0119311-001.txt` | BRASIL CARD (CNPJ 03130170000189) | abril/2026 |
+| `extraidos/W0119310-001.txt` | ALELO SA (CNPJ 04740876000125) | abril/2026 |
 
 ## Contexto QlikSense
 
