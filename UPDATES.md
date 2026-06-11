@@ -2,6 +2,21 @@
 
 ---
 
+## 2026-06-11 — Tabulação completa dos dados
+
+### `processar_dimp.py` — campos expandidos
+- **0000**: adicionados `situacao` (pos 8) e `competencia` (pos 9)
+- **0100**: adicionados `logradouro`, `cep`, `cod_municipio`, `uf`, `nome_contato`, `telefone`, `email`, `dt_inicio`, `flag` — passa de 4 para 13 campos
+- **0200**: adicionados `cod_ip` (pos 2) e `flag` (pos 4)
+- **1115**: adicionados `cod_aut` (pos 2), `flag` (pos 4), `hora` (pos 6), `qtd` (pos 8) — passa de 4 para 8 campos
+
+### `app.py` — interface tabulada
+- Layout reorganizado em **abas por tipo de registro** (0000 / 0100 / 0200 / 1100 / 1110 / 1115)
+- Cada aba tem busca própria e botão **"Exportar como CSV"** (encoding UTF-8 BOM para Excel)
+- `carregar_eventos` agora retorna `dict[reg → lista]` em vez de lista plana — amostra separada por registro
+
+---
+
 ## 2026-06-11 — Otimizações de Escalabilidade e Resiliência
 
 ### `processar_dimp.py`
