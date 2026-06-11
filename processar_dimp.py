@@ -15,11 +15,17 @@ LOG = logging.getLogger("dimp")
 _RE_DT_TRANSMISSAO = re.compile(r"\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}")
 
 
-def _extrair_dt_transmissao(caminho: Path) -> str:
+def _extrair_dt_transmissao(caminho: Path) -> tuple[str, str]:
+    """Retorna (dt_tx, hora_tx) no formato AAAAMMDD e HHMMSS."""
     with io.open(caminho, mode="r", encoding="ISO-8859-1", errors="replace") as f:
         primeira_linha = f.readline()
     m = _RE_DT_TRANSMISSAO.search(primeira_linha)
-    return m.group(0) if m else ""
+    if not m:
+        return "", ""
+    valor = m.group(0)                    # "2026/03/17 18:30:25"
+    dt_tx = valor[:10].replace("/", "")   # "20260317"
+    hora_tx = valor[11:].replace(":", "") # "183025"
+    return dt_tx, hora_tx
 
 
 def campo(campos: list[str], indice: int, padrao: str = "") -> str:
@@ -56,10 +62,11 @@ class Registro0000:
     dt_fin: str
     situacao: str
     competencia: str
-    dt_transmissao: str
+    dt_tx: str   # Auditoria interna — não consta no layout oficial V10
+    hora_tx: str # Auditoria interna — não consta no layout oficial V10
 
     @classmethod
-    def from_campos(cls, campos: list[str], dt_transmissao: str) -> "Registro0000":
+    def from_campos(cls, campos: list[str], dt_tx: str, hora_tx: str) -> "Registro0000":
         return cls(
             versao=campo(campos, 1),
             finalidade=campo(campos, 2),
@@ -70,7 +77,8 @@ class Registro0000:
             dt_fin=campo(campos, 7),
             situacao=campo(campos, 8),
             competencia=campo(campos, 9),
-            dt_transmissao=dt_transmissao,
+            dt_tx=dt_tx,
+            hora_tx=hora_tx,
         )
 
 
@@ -313,14 +321,14 @@ def iter_linhas_dimp(caminho: Path) -> Generator[tuple[int, list[str]], None, No
 
 def parse_dimp(caminho: Path) -> Generator[EventoDimp, None, EstadoDimp]:
     estado = EstadoDimp()
-    dt_transmissao = _extrair_dt_transmissao(caminho)
+    dt_tx, hora_tx = _extrair_dt_transmissao(caminho)
 
     for numero_linha, campos in iter_linhas_dimp(caminho):
         reg = campos[0]
 
         try:
             if reg == "0000":
-                estado.abertura = Registro0000.from_campos(campos, dt_transmissao)
+                estado.abertura = Registro0000.from_campos(campos, dt_tx, hora_tx)
                 yield EventoDimp(numero_linha, reg, estado.abertura)
 
             elif reg == "0100":
