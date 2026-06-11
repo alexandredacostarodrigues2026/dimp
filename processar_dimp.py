@@ -183,6 +183,14 @@ class Registro1115:
         )
 
 
+def chave_1100(r: "Registro1100") -> str:
+    return f"{r.cod_cliente}|{r.dt_ini}|{r.dt_fin}"
+
+
+def chave_1110(r: "Registro1110") -> str:
+    return f"{chave_1100(r.pai_1100)}|{r.cod_mcapt}|{r.dt_operacao}"
+
+
 @dataclass(frozen=True)
 class EventoDimp:
     linha: int

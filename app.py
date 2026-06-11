@@ -12,7 +12,15 @@ from typing import Any
 
 import streamlit as st
 
-from processar_dimp import EventoDimp, parse_dimp
+from processar_dimp import (
+    EventoDimp,
+    Registro1100,
+    Registro1110,
+    Registro1115,
+    chave_1100,
+    chave_1110,
+    parse_dimp,
+)
 
 
 logging.basicConfig(
@@ -31,13 +39,20 @@ REGISTROS_ALVO = ("0000", "0100", "0200", "1100", "1110", "1115")
 def serializar_registro(evento: EventoDimp) -> dict[str, Any]:
     registro = evento.registro
     if is_dataclass(registro):
-        # Expande apenas campos primitivos; pais (pai_1100, pai_1110) são
-        # ignorados para evitar expansão recursiva de 3 níveis por linha.
         dados = {
             f.name: str(getattr(registro, f.name))
             for f in fields(registro)
             if not is_dataclass(getattr(registro, f.name))
         }
+        # Injeta chaves de ligação como FK explícita nos registros filhos
+        if isinstance(registro, Registro1100):
+            dados["chave_1100"] = chave_1100(registro)
+        elif isinstance(registro, Registro1110):
+            dados["chave_pai_1100"] = chave_1100(registro.pai_1100)
+            dados["chave_1110"] = chave_1110(registro)
+        elif isinstance(registro, Registro1115):
+            dados["chave_pai_1110"] = chave_1110(registro.pai_1110)
+            dados["chave_pai_1100"] = chave_1100(registro.pai_1110.pai_1100)
     else:
         dados = {"valor": str(registro)}
 
