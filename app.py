@@ -83,15 +83,17 @@ def gerar_csv(linhas: list[dict[str, Any]]) -> bytes:
     return buf.getvalue().encode("utf-8-sig")
 
 
+PASTA_ORIGINAIS = Path("originais")
 PASTA_EXTRAIDOS = Path("extraidos")
 
 
-def _extrair_zip(dados: bytes, nome_zip: str) -> tuple[Path, str]:
-    pasta = PASTA_EXTRAIDOS / Path(nome_zip).stem
+def _extrair_zip_para_pasta(caminho_zip: Path) -> tuple[Path, list[str]]:
+    pasta = PASTA_EXTRAIDOS / caminho_zip.stem
     pasta.mkdir(parents=True, exist_ok=True)
 
-    with zipfile.ZipFile(io.BytesIO(dados)) as z:
+    with zipfile.ZipFile(caminho_zip) as z:
         z.extractall(pasta)
+        nomes = z.namelist()
         txts = sorted(
             [i for i in z.infolist() if i.filename.lower().endswith(".txt")],
             key=lambda i: i.file_size,
@@ -101,10 +103,66 @@ def _extrair_zip(dados: bytes, nome_zip: str) -> tuple[Path, str]:
             raise ValueError("Nenhum arquivo .txt encontrado no ZIP.")
         nome_dimp = txts[0].filename
 
-    return pasta / nome_dimp, nome_dimp
+    return pasta / nome_dimp, nomes
+
+
+def _listar_zips() -> list[Path]:
+    if not PASTA_ORIGINAIS.exists():
+        return []
+    return sorted(PASTA_ORIGINAIS.glob("*.zip"))
+
+
+def _listar_extraidos() -> list[Path]:
+    if not PASTA_EXTRAIDOS.exists():
+        return []
+    return sorted(
+        p for pasta in PASTA_EXTRAIDOS.iterdir() if pasta.is_dir()
+        for p in pasta.glob("*.txt")
+        if p.stat().st_size > 10_000
+    )
+
+
+def sidebar_extracao() -> None:
+    st.sidebar.header("Extração de ZIP")
+    zips = _listar_zips()
+
+    if not zips:
+        st.sidebar.caption("Nenhum ZIP encontrado em originais/")
+        return
+
+    opcoes = {z.name: z for z in zips}
+    selecionado = st.sidebar.selectbox("ZIP disponível", list(opcoes.keys()), label_visibility="collapsed")
+
+    if st.sidebar.button("Extrair", use_container_width=True):
+        try:
+            caminho_dimp, arquivos = _extrair_zip_para_pasta(opcoes[selecionado])
+            st.sidebar.success(f"Extraído em extraidos/{opcoes[selecionado].stem}/")
+            for arq in arquivos:
+                st.sidebar.caption(f"• {arq}")
+        except Exception as exc:
+            st.sidebar.error(str(exc))
 
 
 def caminho_origem() -> tuple[str, str]:
+    st.sidebar.header("Fonte de dados")
+
+    extraidos = _listar_extraidos()
+    opcoes_extraidos = {p.name: p for p in extraidos}
+
+    modo = st.sidebar.radio(
+        "Origem",
+        ["Arquivo extraído", "Upload"],
+        label_visibility="collapsed",
+    )
+
+    if modo == "Arquivo extraído":
+        if not opcoes_extraidos:
+            st.sidebar.caption("Nenhum arquivo extraído ainda. Use o painel acima.")
+            return str(ARQUIVO_EXEMPLO), ARQUIVO_EXEMPLO.name
+        nome = st.sidebar.selectbox("Arquivo", list(opcoes_extraidos.keys()), label_visibility="collapsed")
+        p = opcoes_extraidos[nome]
+        return str(p), nome
+
     arquivo = st.sidebar.file_uploader("Arquivo DIMP", type=("txt", "zip"), accept_multiple_files=False)
     if arquivo is None:
         return str(ARQUIVO_EXEMPLO), ARQUIVO_EXEMPLO.name
@@ -114,23 +172,31 @@ def caminho_origem() -> tuple[str, str]:
 
     if nome.lower().endswith(".zip"):
         try:
-            caminho_dimp, nome_interno = _extrair_zip(dados, nome)
-            st.sidebar.caption(f"Extraído em: extraidos/{Path(nome).stem}/")
-            return str(caminho_dimp), f"{nome} → {nome_interno}"
+            with zipfile.ZipFile(io.BytesIO(dados)) as z:
+                txts = sorted(
+                    [i for i in z.infolist() if i.filename.lower().endswith(".txt")],
+                    key=lambda i: i.file_size, reverse=True,
+                )
+                if not txts:
+                    raise ValueError("Nenhum .txt no ZIP.")
+                conteudo = z.read(txts[0].filename)
+                nome = f"{nome} → {txts[0].filename}"
+            dados = conteudo
         except Exception as exc:
-            st.error(f"Erro ao extrair ZIP: {exc}")
+            st.error(f"Erro ao ler ZIP: {exc}")
             st.stop()
 
-    with NamedTemporaryFile(delete=False, suffix=".txt") as temporario:
-        temporario.write(dados)
-        return temporario.name, nome
+    with NamedTemporaryFile(delete=False, suffix=".txt") as tmp:
+        tmp.write(dados)
+        return tmp.name, nome
 
 
 st.set_page_config(page_title="Consulta DIMP", layout="wide")
 
 st.title("Consulta DIMP")
 
-st.sidebar.header("Fonte")
+sidebar_extracao()
+st.sidebar.divider()
 caminho, nome_arquivo = caminho_origem()
 limite = st.sidebar.slider("Amostras carregadas", min_value=100, max_value=5000, value=1000, step=100)
 
