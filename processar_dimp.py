@@ -128,23 +128,61 @@ class Registro0200:
         )
 
 
+# Tecnologias que dispensam o limiar CPF (POS=1, Mobile=2, E-commerce=3, TEF=4)
+TECNOLOGIAS_ISENTAS_LIMIAR: frozenset[str] = frozenset({"1", "2", "3", "4"})
+LIMIAR_VALOR_CPF = Decimal("3375.00")
+LIMIAR_QTD_CPF = 30
+
+
 @dataclass(frozen=True)
 class Registro1100:
+    cod_ip_par: str
     cod_cliente: str
+    ind_comex: str
+    ind_extemp: str
     dt_ini: str
     dt_fin: str
-    valor_total_mensal: Decimal
-    qtd_total: int
+    valor: Decimal
+    qtd: int
 
     @classmethod
     def from_campos(cls, campos: list[str]) -> "Registro1100":
         return cls(
+            cod_ip_par=campo(campos, 1),
             cod_cliente=campo(campos, 2),
+            ind_comex=campo(campos, 3),
+            ind_extemp=campo(campos, 4),
             dt_ini=campo(campos, 5),
             dt_fin=campo(campos, 6),
-            valor_total_mensal=decimal_br(campo(campos, 7)),
-            qtd_total=inteiro(campo(campos, 8)),
+            valor=decimal_br(campo(campos, 7)),
+            qtd=inteiro(campo(campos, 8)),
         )
+
+    def validar_soma(self, soma_filhos: Decimal) -> Optional[str]:
+        if soma_filhos != self.valor:
+            return (
+                f"Divergencia 1100 cod_cliente={self.cod_cliente}: "
+                f"declarado={self.valor_formatado} soma_1110={soma_filhos}"
+            )
+        return None
+
+    def alerta_limiar_cpf(self, cpf: str, tecnologias: frozenset) -> Optional[str]:
+        if not cpf:
+            return None
+        if tecnologias & TECNOLOGIAS_ISENTAS_LIMIAR:
+            return None
+        if self.valor < LIMIAR_VALOR_CPF or self.qtd < LIMIAR_QTD_CPF:
+            return (
+                f"CPF {cpf} cod_cliente={self.cod_cliente}: "
+                f"valor={self.valor_formatado} qtd={self.qtd} "
+                f"abaixo do limiar (R$3.375,00 / 30 transacoes)"
+            )
+        return None
+
+    @property
+    def valor_formatado(self) -> str:
+        inteiro_str, decimal_str = f"{self.valor:.2f}".split(".")
+        return f"{inteiro_str},{decimal_str}"
 
 
 @dataclass(frozen=True)
@@ -219,6 +257,7 @@ class EstadoDimp:
         self.operacao_diaria_ativa: Optional[Registro1110] = None
         self.soma_1115_do_1110 = Decimal("0")
         self.soma_1110_do_1100 = Decimal("0")
+        self.tecnologias_do_1100: set[str] = set()
 
     def fechar_1110(self) -> None:
         if self.operacao_diaria_ativa is None:
@@ -242,17 +281,22 @@ class EstadoDimp:
         if self.resumo_mensal_ativo is None:
             return
 
-        esperado = self.resumo_mensal_ativo.valor_total_mensal
-        if self.soma_1110_do_1100 != esperado:
-            LOG.warning(
-                "Divergencia 1100: cod_cliente=%s esperado=%s soma_1110=%s",
-                self.resumo_mensal_ativo.cod_cliente,
-                esperado,
-                self.soma_1110_do_1100,
-            )
+        r = self.resumo_mensal_ativo
+
+        msg = r.validar_soma(self.soma_1110_do_1100)
+        if msg:
+            LOG.warning(msg)
+
+        cliente = self.clientes.get(r.cod_cliente)
+        cpf = cliente.cpf if cliente else ""
+        techs = frozenset(self.tecnologias_do_1100)
+        msg = r.alerta_limiar_cpf(cpf, techs)
+        if msg:
+            LOG.warning(msg)
 
         self.resumo_mensal_ativo = None
         self.soma_1110_do_1100 = Decimal("0")
+        self.tecnologias_do_1100 = set()
 
 
 def iter_linhas_dimp(caminho: Path) -> Generator[tuple[int, list[str]], None, None]:
@@ -303,6 +347,9 @@ def parse_dimp(caminho: Path) -> Generator[EventoDimp, None, EstadoDimp]:
                 registro = Registro1110.from_campos(campos, estado.resumo_mensal_ativo)
                 estado.operacao_diaria_ativa = registro
                 estado.soma_1110_do_1100 += registro.valor_total_diario
+                mcapt = estado.meios_captura.get(registro.cod_mcapt)
+                if mcapt:
+                    estado.tecnologias_do_1100.add(mcapt.tipo_tecnologia)
                 yield EventoDimp(numero_linha, reg, registro)
 
             elif reg == "1115":
