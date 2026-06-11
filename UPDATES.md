@@ -2,6 +2,31 @@
 
 ---
 
+## 2026-06-11 — Registro 00000 (transmissão) e extração de protocolo ELP
+
+### Contexto
+Arquivos BRASIL-CARD chegam em ZIP com um arquivo `.elp` separado contendo a string de protocolo
+(`P3854146120260511111331W`) que identifica a data e hora exata de transmissão.
+O arquivo principal `.txt` começa diretamente em `|0000|` sem cabeçalho de protocolo na primeira linha.
+
+### `processar_dimp.py`
+- **Novo dataclass `Registro00000`**: registro pai do `0000`, com dois campos — `dt_tx` (AAAAMMDD) e `hora_tx` (HHMMSS).
+- **Emissão do `00000`**:
+  - Se o arquivo contém fisicamente a linha `|00000|dt|hora|`, lê de lá (prioridade).
+  - Caso contrário, emite sinteticamente antes do primeiro `0000`, usando `_extrair_dt_transmissao`.
+- **Guard contra duplicata**: `|0000|` na seção de totais (`|9900|`) é ignorado silenciosamente (`if estado.abertura is not None: continue`).
+- **`_extrair_dt_transmissao`**: três fontes em cascata — (1) regex `P\d*?(20\d{6})(\d{6})W` na primeira linha, (2) `YYYY/MM/DD HH:MM:SS` no cabeçalho, (3) padrão `DD-MM-YYYY_HHMMSS` no caminho completo do arquivo.
+
+### `app.py`
+- **`_extrair_zip_para_pasta`**: ao extrair o ZIP, o conteúdo do `.elp` é prefixado ao `.txt` principal e a linha `|00000|dt_tx|hora_tx|` é inserida antes do `|0000|`.
+- **`REGISTROS_ALVO`** inclui `"00000"` e a aba correspondente aparece na interface como "Transmissao".
+- **`serializar_registro`**: `Registro00000` serializado normalmente (apenas `dt_tx` e `hora_tx`).
+
+### Arquivo de análise
+- `extraidos/W0119311-001.txt` — cópia do BRASIL-CARD com ELP prepended e linha `|00000|20260511|111331|` inserida, disponibilizada na raiz de `extraidos/` para inspeção rápida.
+
+---
+
 ## 2026-06-11 — Tabulação completa dos dados
 
 ### `processar_dimp.py` — campos expandidos

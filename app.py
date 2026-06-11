@@ -106,11 +106,20 @@ def _extrair_zip_para_pasta(caminho_zip: Path) -> tuple[Path, list[str]]:
 
         elps = [i for i in z.infolist() if i.filename.lower().endswith(".elp")]
         if elps:
-            cabecalho = z.read(elps[0].filename)
+            import re as _re
+            cabecalho_bytes = z.read(elps[0].filename)
+            cabecalho_txt = cabecalho_bytes.decode("iso-8859-1", errors="replace")
+
+            m = _re.search(r"P\d*?(20\d{6})(\d{6})W", cabecalho_txt)
+            linha_00000 = (
+                f"|00000|{m.group(1)}|{m.group(2)}|\n".encode("iso-8859-1")
+                if m else b""
+            )
+
             caminho_dimp = pasta / nome_dimp
             conteudo_dimp = caminho_dimp.read_bytes()
-            if not conteudo_dimp.startswith(cabecalho[:10]):
-                caminho_dimp.write_bytes(cabecalho + conteudo_dimp)
+            if not conteudo_dimp.startswith(cabecalho_bytes[:10]):
+                caminho_dimp.write_bytes(cabecalho_bytes + linha_00000 + conteudo_dimp)
 
     return pasta / nome_dimp, nomes
 

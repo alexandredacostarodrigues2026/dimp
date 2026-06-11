@@ -342,14 +342,23 @@ def iter_linhas_dimp(caminho: Path) -> Generator[tuple[int, list[str]], None, No
 def parse_dimp(caminho: Path) -> Generator[EventoDimp, None, EstadoDimp]:
     estado = EstadoDimp()
     dt_tx, hora_tx = _extrair_dt_transmissao(caminho)
-
-    yield EventoDimp(0, "00000", Registro00000(dt_tx=dt_tx, hora_tx=hora_tx))
+    emitiu_00000 = False
 
     for numero_linha, campos in iter_linhas_dimp(caminho):
         reg = campos[0]
 
         try:
-            if reg == "0000":
+            if reg == "00000":
+                registro = Registro00000(dt_tx=campo(campos, 1), hora_tx=campo(campos, 2))
+                yield EventoDimp(numero_linha, reg, registro)
+                emitiu_00000 = True
+
+            elif reg == "0000":
+                if estado.abertura is not None:
+                    continue  # ignora 0000 duplicado na secao de totais
+                if not emitiu_00000:
+                    yield EventoDimp(0, "00000", Registro00000(dt_tx=dt_tx, hora_tx=hora_tx))
+                    emitiu_00000 = True
                 estado.abertura = Registro0000.from_campos(campos)
                 yield EventoDimp(numero_linha, reg, estado.abertura)
 
