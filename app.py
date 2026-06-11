@@ -83,8 +83,15 @@ def gerar_csv(linhas: list[dict[str, Any]]) -> bytes:
     return buf.getvalue().encode("utf-8-sig")
 
 
-def _extrair_txt_do_zip(dados: bytes) -> tuple[bytes, str]:
+PASTA_EXTRAIDOS = Path("extraidos")
+
+
+def _extrair_zip(dados: bytes, nome_zip: str) -> tuple[Path, str]:
+    pasta = PASTA_EXTRAIDOS / Path(nome_zip).stem
+    pasta.mkdir(parents=True, exist_ok=True)
+
     with zipfile.ZipFile(io.BytesIO(dados)) as z:
+        z.extractall(pasta)
         txts = sorted(
             [i for i in z.infolist() if i.filename.lower().endswith(".txt")],
             key=lambda i: i.file_size,
@@ -92,8 +99,9 @@ def _extrair_txt_do_zip(dados: bytes) -> tuple[bytes, str]:
         )
         if not txts:
             raise ValueError("Nenhum arquivo .txt encontrado no ZIP.")
-        entrada = txts[0]
-        return z.read(entrada.filename), entrada.filename
+        nome_dimp = txts[0].filename
+
+    return pasta / nome_dimp, nome_dimp
 
 
 def caminho_origem() -> tuple[str, str]:
@@ -106,8 +114,9 @@ def caminho_origem() -> tuple[str, str]:
 
     if nome.lower().endswith(".zip"):
         try:
-            dados, nome_interno = _extrair_txt_do_zip(dados)
-            nome = f"{nome} → {nome_interno}"
+            caminho_dimp, nome_interno = _extrair_zip(dados, nome)
+            st.sidebar.caption(f"Extraído em: extraidos/{Path(nome).stem}/")
+            return str(caminho_dimp), f"{nome} → {nome_interno}"
         except Exception as exc:
             st.error(f"Erro ao extrair ZIP: {exc}")
             st.stop()
