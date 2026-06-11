@@ -44,6 +44,8 @@ class Registro0000:
     nome_ip: str
     dt_ini: str
     dt_fin: str
+    situacao: str
+    competencia: str
 
     @classmethod
     def from_campos(cls, campos: list[str]) -> "Registro0000":
@@ -55,6 +57,8 @@ class Registro0000:
             nome_ip=campo(campos, 5),
             dt_ini=campo(campos, 6),
             dt_fin=campo(campos, 7),
+            situacao=campo(campos, 8),
+            competencia=campo(campos, 9),
         )
 
 
@@ -64,6 +68,15 @@ class Registro0100:
     cnpj: str
     cpf: str
     nome_razao_social: str
+    logradouro: str
+    cep: str
+    cod_municipio: str
+    uf: str
+    nome_contato: str
+    telefone: str
+    email: str
+    dt_inicio: str
+    flag: str
 
     @classmethod
     def from_campos(cls, campos: list[str]) -> "Registro0100":
@@ -72,20 +85,33 @@ class Registro0100:
             cnpj=campo(campos, 2),
             cpf=campo(campos, 3),
             nome_razao_social=campo(campos, 4),
+            logradouro=campo(campos, 5),
+            cep=campo(campos, 6),
+            cod_municipio=campo(campos, 7),
+            uf=campo(campos, 8),
+            nome_contato=campo(campos, 9),
+            telefone=campo(campos, 10),
+            email=campo(campos, 11),
+            dt_inicio=campo(campos, 12),
+            flag=campo(campos, 13),
         )
 
 
 @dataclass(frozen=True)
 class Registro0200:
     cod_mcapt: str
+    cod_ip: str
     tipo_tecnologia: str
+    flag: str
     marca: str
 
     @classmethod
     def from_campos(cls, campos: list[str]) -> "Registro0200":
         return cls(
             cod_mcapt=campo(campos, 1),
+            cod_ip=campo(campos, 2),
             tipo_tecnologia=campo(campos, 3),
+            flag=campo(campos, 4),
             marca=campo(campos, 5),
         )
 
@@ -133,18 +159,26 @@ class Registro1110:
 @dataclass(frozen=True)
 class Registro1115:
     nsu: str
+    cod_aut: str
     id_transac: str
+    flag: str
     natureza_operacao: str
+    hora: str
     valor_transacao: Decimal
+    qtd: int
     pai_1110: Registro1110
 
     @classmethod
     def from_campos(cls, campos: list[str], pai_1110: Registro1110) -> "Registro1115":
         return cls(
             nsu=campo(campos, 1),
+            cod_aut=campo(campos, 2),
             id_transac=campo(campos, 3),
+            flag=campo(campos, 4),
             natureza_operacao=campo(campos, 5),
+            hora=campo(campos, 6),
             valor_transacao=decimal_br(campo(campos, 7)),
+            qtd=inteiro(campo(campos, 8)),
             pai_1110=pai_1110,
         )
 

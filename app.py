@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import logging
 import os
 from collections import Counter
@@ -43,16 +45,26 @@ def serializar_registro(evento: EventoDimp) -> dict[str, Any]:
 
 
 @st.cache_data(show_spinner=False)
-def carregar_eventos(caminho: str, limite: int) -> tuple[list[dict[str, Any]], dict[str, int]]:
+def carregar_eventos(caminho: str, limite: int) -> tuple[dict[str, list[dict[str, Any]]], dict[str, int]]:
     contagem: Counter[str] = Counter()
-    amostras: list[dict[str, Any]] = []
+    tabelas: dict[str, list[dict[str, Any]]] = {reg: [] for reg in REGISTROS_ALVO}
 
     for evento in parse_dimp(Path(caminho)):
         contagem[evento.reg] += 1
-        if evento.reg in REGISTROS_ALVO and len(amostras) < limite:
-            amostras.append(serializar_registro(evento))
+        if evento.reg in REGISTROS_ALVO and len(tabelas[evento.reg]) < limite:
+            tabelas[evento.reg].append(serializar_registro(evento))
 
-    return amostras, dict(contagem)
+    return tabelas, dict(contagem)
+
+
+def gerar_csv(linhas: list[dict[str, Any]]) -> bytes:
+    if not linhas:
+        return b""
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=linhas[0].keys())
+    writer.writeheader()
+    writer.writerows(linhas)
+    return buf.getvalue().encode("utf-8-sig")
 
 
 def caminho_origem() -> tuple[str, str]:
@@ -79,7 +91,7 @@ if not Path(caminho).exists():
 
 try:
     with st.spinner("Processando DIMP em streaming..."):
-        amostras, contagem = carregar_eventos(caminho, limite)
+        tabelas, contagem = carregar_eventos(caminho, limite)
 except Exception as exc:
     LOG.error("Falha ao processar %s: %s", nome_arquivo, exc, exc_info=True)
     st.error(f"Erro ao processar o arquivo: {exc}")
@@ -96,34 +108,48 @@ st.subheader("Contagem por registro")
 contagem_ordenada = [{"reg": reg, "quantidade": qtd} for reg, qtd in sorted(contagem.items())]
 st.dataframe(contagem_ordenada, use_container_width=True, hide_index=True)
 
-st.subheader("Primeira consulta")
-col_reg, col_busca = st.columns([1, 2])
-registro = col_reg.selectbox("Registro", ("Todos", *REGISTROS_ALVO), index=0)
-busca = col_busca.text_input("Buscar em qualquer campo", placeholder="Ex.: 000182880, PIX, 2.50")
+st.subheader("Tabelas por registro")
 
-linhas = amostras
-if registro != "Todos":
-    linhas = [linha for linha in linhas if linha["reg"] == registro]
+DESCRICOES = {
+    "0000": "Cabecalho",
+    "0100": "Clientes",
+    "0200": "Meios de Captura",
+    "1100": "Resumo Mensal",
+    "1110": "Resumo Diario",
+    "1115": "Transacoes",
+}
 
-if busca:
-    termo = busca.casefold()
-    linhas = [
-        linha
-        for linha in linhas
-        if any(termo in str(valor).casefold() for valor in linha.values())
-    ]
+abas = st.tabs([f"{reg} — {DESCRICOES[reg]}" for reg in REGISTROS_ALVO])
 
-st.caption(f"Exibindo {len(linhas)} linha(s) da amostra carregada de {len(amostras)} registro(s).")
-st.dataframe(linhas, use_container_width=True, hide_index=True)
+for aba, reg in zip(abas, REGISTROS_ALVO):
+    with aba:
+        linhas = tabelas[reg]
+        qtd_total = contagem.get(reg, 0)
+        qtd_amostra = len(linhas)
 
-with st.expander("Contexto tecnico"):
-    st.markdown(
-        """
-        - `0000` abre o arquivo e identifica a instituicao declarante.
-        - `0100` cadastra clientes.
-        - `0200` cadastra meios de captura.
-        - `1100` resume o movimento mensal por cliente.
-        - `1110` resume o movimento diario dentro do `1100`.
-        - `1115` detalha transacoes e alimenta a validacao de soma do `1110`.
-        """
-    )
+        busca = st.text_input(
+            "Buscar em qualquer campo",
+            placeholder="Ex.: 000182880, PIX, 2,50",
+            key=f"busca_{reg}",
+        )
+
+        if busca:
+            termo = busca.casefold()
+            linhas = [
+                l for l in linhas
+                if any(termo in str(v).casefold() for v in l.values())
+            ]
+
+        st.caption(
+            f"Exibindo {len(linhas)} linha(s) — amostra de {qtd_amostra} de {qtd_total:,} registros no arquivo.".replace(",", ".")
+        )
+        st.dataframe(linhas, use_container_width=True, hide_index=True)
+
+        csv_bytes = gerar_csv(tabelas[reg])
+        st.download_button(
+            label=f"Exportar {reg} como CSV",
+            data=csv_bytes,
+            file_name=f"dimp_{reg}.csv",
+            mime="text/csv",
+            key=f"export_{reg}",
+        )
