@@ -12,20 +12,31 @@ from typing import Dict, Generator, Iterable, Optional
 
 LOG = logging.getLogger("dimp")
 
-_RE_DT_TRANSMISSAO = re.compile(r"\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}")
+_RE_DT_TX_HEADER = re.compile(r"\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}")
+_RE_DT_TX_NOME   = re.compile(r"(\d{2})-(\d{2})-(\d{4})_(\d{6})")
 
 
 def _extrair_dt_transmissao(caminho: Path) -> tuple[str, str]:
-    """Retorna (dt_tx, hora_tx) no formato AAAAMMDD e HHMMSS."""
+    """Retorna (dt_tx, hora_tx) no formato AAAAMMDD e HHMMSS.
+
+    Tenta primeiro a linha de protocolo do cabeçalho (PicPay, TEF).
+    Fallback: extrai do nome do arquivo padrão DD-MM-YYYY_HHMMSS (Brasil Card, etc).
+    """
     with io.open(caminho, mode="r", encoding="ISO-8859-1", errors="replace") as f:
         primeira_linha = f.readline()
-    m = _RE_DT_TRANSMISSAO.search(primeira_linha)
-    if not m:
-        return "", ""
-    valor = m.group(0)                    # "2026/03/17 18:30:25"
-    dt_tx = valor[:10].replace("/", "")   # "20260317"
-    hora_tx = valor[11:].replace(":", "") # "183025"
-    return dt_tx, hora_tx
+
+    m = _RE_DT_TX_HEADER.search(primeira_linha)
+    if m:
+        valor = m.group(0)                    # "2026/03/17 18:30:25"
+        return valor[:10].replace("/", ""), valor[11:].replace(":", "")
+
+    # Busca no nome do arquivo e depois no caminho completo (pasta pai vinda do ZIP)
+    m = _RE_DT_TX_NOME.search(str(caminho))
+    if m:
+        dia, mes, ano, hora = m.group(1), m.group(2), m.group(3), m.group(4)
+        return f"{ano}{mes}{dia}", hora       # "20260511", "111331"
+
+    return "", ""
 
 
 def campo(campos: list[str], indice: int, padrao: str = "") -> str:
