@@ -12,29 +12,36 @@ from typing import Dict, Generator, Iterable, Optional
 
 LOG = logging.getLogger("dimp")
 
-_RE_DT_TX_HEADER = re.compile(r"\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}")
-_RE_DT_TX_NOME   = re.compile(r"(\d{2})-(\d{2})-(\d{4})_(\d{6})")
+# P<numero>(AAAAMMDD)(HHMMSS)W  — string de protocolo TEF/TED
+_RE_DT_TX_PROTOCOLO = re.compile(r"P\d*?(20\d{6})(\d{6})W")
+_RE_DT_TX_HEADER    = re.compile(r"\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}")
+_RE_DT_TX_NOME      = re.compile(r"(\d{2})-(\d{2})-(\d{4})_(\d{6})")
 
 
 def _extrair_dt_transmissao(caminho: Path) -> tuple[str, str]:
     """Retorna (dt_tx, hora_tx) no formato AAAAMMDD e HHMMSS.
 
-    Tenta primeiro a linha de protocolo do cabeçalho (PicPay, TEF).
-    Fallback: extrai do nome do arquivo padrão DD-MM-YYYY_HHMMSS (Brasil Card, etc).
+    Prioridade:
+    1. String de protocolo P...W no cabeçalho (mais precisa).
+    2. Data formatada YYYY/MM/DD HH:MM:SS no cabeçalho.
+    3. Padrão DD-MM-YYYY_HHMMSS no caminho do arquivo.
     """
     with io.open(caminho, mode="r", encoding="ISO-8859-1", errors="replace") as f:
         primeira_linha = f.readline()
 
+    m = _RE_DT_TX_PROTOCOLO.search(primeira_linha)
+    if m:
+        return m.group(1), m.group(2)             # "20260511", "111331"
+
     m = _RE_DT_TX_HEADER.search(primeira_linha)
     if m:
-        valor = m.group(0)                    # "2026/03/17 18:30:25"
+        valor = m.group(0)                        # "2026/03/17 18:30:25"
         return valor[:10].replace("/", ""), valor[11:].replace(":", "")
 
-    # Busca no nome do arquivo e depois no caminho completo (pasta pai vinda do ZIP)
     m = _RE_DT_TX_NOME.search(str(caminho))
     if m:
         dia, mes, ano, hora = m.group(1), m.group(2), m.group(3), m.group(4)
-        return f"{ano}{mes}{dia}", hora       # "20260511", "111331"
+        return f"{ano}{mes}{dia}", hora
 
     return "", ""
 
@@ -63,6 +70,12 @@ def inteiro(valor: str) -> int:
 
 
 @dataclass(frozen=True)
+class Registro00000:
+    dt_tx: str
+    hora_tx: str
+
+
+@dataclass(frozen=True)
 class Registro0000:
     versao: str
     finalidade: str
@@ -73,11 +86,9 @@ class Registro0000:
     dt_fin: str
     situacao: str
     competencia: str
-    dt_tx: str   # Auditoria interna — não consta no layout oficial V10
-    hora_tx: str # Auditoria interna — não consta no layout oficial V10
 
     @classmethod
-    def from_campos(cls, campos: list[str], dt_tx: str, hora_tx: str) -> "Registro0000":
+    def from_campos(cls, campos: list[str]) -> "Registro0000":
         return cls(
             versao=campo(campos, 1),
             finalidade=campo(campos, 2),
@@ -88,8 +99,6 @@ class Registro0000:
             dt_fin=campo(campos, 7),
             situacao=campo(campos, 8),
             competencia=campo(campos, 9),
-            dt_tx=dt_tx,
-            hora_tx=hora_tx,
         )
 
 
@@ -334,12 +343,14 @@ def parse_dimp(caminho: Path) -> Generator[EventoDimp, None, EstadoDimp]:
     estado = EstadoDimp()
     dt_tx, hora_tx = _extrair_dt_transmissao(caminho)
 
+    yield EventoDimp(0, "00000", Registro00000(dt_tx=dt_tx, hora_tx=hora_tx))
+
     for numero_linha, campos in iter_linhas_dimp(caminho):
         reg = campos[0]
 
         try:
             if reg == "0000":
-                estado.abertura = Registro0000.from_campos(campos, dt_tx, hora_tx)
+                estado.abertura = Registro0000.from_campos(campos)
                 yield EventoDimp(numero_linha, reg, estado.abertura)
 
             elif reg == "0100":

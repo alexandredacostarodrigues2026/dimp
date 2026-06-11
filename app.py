@@ -24,6 +24,7 @@ from processar_dimp import (
 )
 
 
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -34,7 +35,7 @@ _ARQUIVO_EXEMPLO_PADRAO = (
     "DIMP_09_PB_22896431000382_2026-02-01_2026-02-28_1_1_W0118266_17-03-2026_183030_PICPAY-INSTITUICAO-DE-PAGAMENT.txt"
 )
 ARQUIVO_EXEMPLO = Path(os.environ.get("DIMP_ARQUIVO_EXEMPLO", _ARQUIVO_EXEMPLO_PADRAO))
-REGISTROS_ALVO = ("0000", "0100", "0200", "1100", "1110", "1115")
+REGISTROS_ALVO = ("00000", "0000", "0100", "0200", "1100", "1110", "1115")
 
 
 def serializar_registro(evento: EventoDimp) -> dict[str, Any]:
@@ -234,6 +235,7 @@ st.dataframe(contagem_ordenada, use_container_width=True, hide_index=True)
 st.subheader("Tabelas por registro")
 
 DESCRICOES = {
+    "00000": "Transmissao",
     "0000": "Cabecalho",
     "0100": "Clientes",
     "0200": "Meios de Captura",
