@@ -103,6 +103,14 @@ def _extrair_zip_para_pasta(caminho_zip: Path) -> tuple[Path, list[str]]:
             raise ValueError("Nenhum arquivo .txt encontrado no ZIP.")
         nome_dimp = txts[0].filename
 
+        elps = [i for i in z.infolist() if i.filename.lower().endswith(".elp")]
+        if elps:
+            cabecalho = z.read(elps[0].filename)
+            caminho_dimp = pasta / nome_dimp
+            conteudo_dimp = caminho_dimp.read_bytes()
+            if not conteudo_dimp.startswith(cabecalho[:10]):
+                caminho_dimp.write_bytes(cabecalho + conteudo_dimp)
+
     return pasta / nome_dimp, nomes
 
 
