@@ -37,6 +37,23 @@ logging.basicConfig(
 )
 LOG = logging.getLogger("dimp.app")
 
+# Lookups estáticos — espelham lkp_* do banco (DIMP V10 / RCAD V06)
+_NAT_OPER: dict[str, str] = {
+    "1":  "Cartão de Crédito",
+    "2":  "Cartão de Débito",
+    "3":  "Boleto próprio",
+    "4":  "Transferência",
+    "5":  "Dinheiro / outra estrutura",
+    "6":  "PIX",
+    "7":  "Voucher / pré-pago",
+    "8":  "Saque / troco / PIX Saque",
+    "11": "Recepção de boletos / recargas",
+    "12": "PIX Garantido",
+}
+_IND_SPLIT:    dict[str, str] = {"0": "Não splitado", "1": "Splitado"}
+_IND_NAT_JUR:  dict[str, str] = {"0": "CPF (PF)", "1": "CNPJ (PJ)"}
+_IND_TP_PIX:   dict[str, str] = {"0": "Dinâmico",  "1": "Não Dinâmico"}
+
 _ARQUIVO_EXEMPLO_PADRAO = (
     "DIMP_09_PB_22896431000382_2026-02-01_2026-02-28_1_1_W0118266_17-03-2026_183030_PICPAY-INSTITUICAO-DE-PAGAMENT.txt"
 )
@@ -73,6 +90,12 @@ def serializar_registro(
             dados["chave_pai_0000"] = chave_tx
             dados["chave_pai_1110"] = f"{chave_tx}|{chave_1110(registro.pai_1110)}"
             dados["chave_pai_1100"] = f"{chave_tx}|{chave_1100(registro.pai_1110.pai_1100)}"
+            dados["nat_oper_desc"]   = _NAT_OPER.get(registro.nat_oper, registro.nat_oper)
+            dados["ind_split_desc"]  = _IND_SPLIT.get(registro.ind_split, registro.ind_split)
+            if registro.ind_nat_jur:
+                dados["ind_nat_jur_desc"] = _IND_NAT_JUR.get(registro.ind_nat_jur, registro.ind_nat_jur)
+            if registro.ind_tp_pix:
+                dados["ind_tp_pix_desc"] = _IND_TP_PIX.get(registro.ind_tp_pix, registro.ind_tp_pix)
     else:
         dados = {"valor": str(registro)}
 
@@ -387,6 +410,31 @@ for aba, reg in zip(abas, REGISTROS_ALVO):
             f"Exibindo {len(linhas)} linha(s) — amostra de {qtd_amostra} de {qtd_total:,} registros no arquivo.".replace(",", ".")
         )
         st.dataframe(linhas, use_container_width=True, hide_index=True)
+
+        if reg == "1115" and tabelas["1115"]:
+            from decimal import Decimal as _D, InvalidOperation as _IE
+            def _dec(v: str) -> _D:
+                try:
+                    return _D(str(v).replace(",", ".").replace(".", "", str(v).count(".") - 1)) if "," in str(v) else _D(str(v))
+                except _IE:
+                    return _D("0")
+
+            acum: dict[str, dict] = {}
+            for row in tabelas["1115"]:
+                cod = str(row.get("nat_oper", ""))
+                desc = str(row.get("nat_oper_desc", cod))
+                if cod not in acum:
+                    acum[cod] = {"nat_oper": cod, "descricao": desc, "qtd": 0, "valor_total": _D("0")}
+                acum[cod]["qtd"] += 1
+                acum[cod]["valor_total"] += _dec(row.get("valor_transacao", "0"))
+
+            resumo = sorted(acum.values(), key=lambda r: int(r["nat_oper"]) if r["nat_oper"].isdigit() else 99)
+            for r in resumo:
+                r["valor_total"] = f"{r['valor_total']:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+            with st.expander("Resumo por Natureza de Operação (amostra)"):
+                st.caption("Baseado na amostra carregada — não representa o total do arquivo.")
+                st.dataframe(resumo, use_container_width=True, hide_index=True)
 
         csv_bytes = gerar_csv(tabelas[reg])
         st.download_button(
