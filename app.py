@@ -124,6 +124,75 @@ def gerar_csv(linhas: list[dict[str, Any]]) -> bytes:
     return buf.getvalue().encode("utf-8-sig")
 
 
+@st.cache_data(show_spinner=False)
+def gerar_comparacao(caminho: str) -> tuple[list[dict], list[dict]]:
+    """Passagem completa no arquivo comparando valores declarados vs soma dos filhos."""
+    from decimal import Decimal as _D
+
+    def _fmt(v: _D) -> str:
+        inteiro, dec = f"{v:.2f}".split(".")
+        return f"{int(inteiro):,}".replace(",", ".") + f",{dec}"
+
+    comp_1100: dict[str, dict] = {}
+    comp_1110: dict[str, dict] = {}
+    chave_tx = ""
+
+    for ev in parse_dimp(Path(caminho)):
+        if ev.reg == "00000":
+            chave_tx = f"{ev.registro.dt_tx}|{ev.registro.hora_tx}"  # type: ignore[union-attr]
+        elif ev.reg == "0000":
+            chave_tx = f"{ev.registro.cnpj_ip}|{chave_tx}"           # type: ignore[union-attr]
+        elif ev.reg == "1100":
+            k = f"{chave_tx}|{chave_1100(ev.registro)}"
+            comp_1100[k] = {
+                "cod_cliente": ev.registro.cod_cliente,
+                "declarado": ev.registro.valor,
+                "soma_1110": _D("0"),
+            }
+        elif ev.reg == "1110":
+            k_pai = f"{chave_tx}|{chave_1100(ev.registro.pai_1100)}"
+            k = f"{chave_tx}|{chave_1110(ev.registro)}"
+            if k_pai in comp_1100:
+                comp_1100[k_pai]["soma_1110"] += ev.registro.valor_total_diario
+            comp_1110[k] = {
+                "cod_cliente": ev.registro.pai_1100.cod_cliente,
+                "cod_mcapt": ev.registro.cod_mcapt,
+                "dt_operacao": ev.registro.dt_operacao,
+                "declarado": ev.registro.valor_total_diario,
+                "soma_1115": _D("0"),
+            }
+        elif ev.reg == "1115":
+            k_pai = f"{chave_tx}|{chave_1110(ev.registro.pai_1110)}"
+            if k_pai in comp_1110:
+                comp_1110[k_pai]["soma_1115"] += ev.registro.valor_transacao
+
+    linhas_1100 = []
+    for d in comp_1100.values():
+        dif = d["declarado"] - d["soma_1110"]
+        linhas_1100.append({
+            "cod_cliente": d["cod_cliente"],
+            "1100_declarado": _fmt(d["declarado"]),
+            "soma_1110": _fmt(d["soma_1110"]),
+            "diferenca": _fmt(dif),
+            "status": "OK" if dif == 0 else "DIVERGENTE",
+        })
+
+    linhas_1110 = []
+    for d in comp_1110.values():
+        dif = d["declarado"] - d["soma_1115"]
+        linhas_1110.append({
+            "cod_cliente": d["cod_cliente"],
+            "cod_mcapt": d["cod_mcapt"],
+            "dt_operacao": d["dt_operacao"],
+            "1110_declarado": _fmt(d["declarado"]),
+            "soma_1115": _fmt(d["soma_1115"]),
+            "diferenca": _fmt(dif),
+            "status": "OK" if dif == 0 else "DIVERGENTE",
+        })
+
+    return linhas_1100, linhas_1110
+
+
 PASTA_ORIGINAIS = Path("originais")
 PASTA_EXTRAIDOS = Path("extraidos")
 
@@ -327,3 +396,34 @@ for aba, reg in zip(abas, REGISTROS_ALVO):
             mime="text/csv",
             key=f"export_{reg}",
         )
+
+st.divider()
+st.subheader("Comparação de Valores")
+
+try:
+    with st.spinner("Calculando comparação..."):
+        comp_1100, comp_1110 = gerar_comparacao(caminho)
+
+    div_1100 = sum(1 for r in comp_1100 if r["status"] == "DIVERGENTE")
+    div_1110 = sum(1 for r in comp_1110 if r["status"] == "DIVERGENTE")
+
+    col_c1, col_c2 = st.columns(2)
+    col_c1.metric("Divergências 1100 vs soma 1110", div_1100,
+                  delta=None if div_1100 == 0 else f"{div_1100} clientes",
+                  delta_color="inverse")
+    col_c2.metric("Divergências 1110 vs soma 1115", div_1110,
+                  delta=None if div_1110 == 0 else f"{div_1110} operações",
+                  delta_color="inverse")
+
+    with st.expander(f"1100 vs soma 1110 — {len(comp_1100)} clientes"):
+        st.dataframe(comp_1100, use_container_width=True, hide_index=True)
+        st.download_button("Exportar CSV", gerar_csv(comp_1100),
+                           "comparacao_1100.csv", "text/csv", key="exp_comp_1100")
+
+    with st.expander(f"1110 vs soma 1115 — {len(comp_1110)} operações diárias"):
+        st.dataframe(comp_1110, use_container_width=True, hide_index=True)
+        st.download_button("Exportar CSV", gerar_csv(comp_1110),
+                           "comparacao_1110.csv", "text/csv", key="exp_comp_1110")
+
+except Exception as exc:
+    st.error(f"Erro ao gerar comparação: {exc}")
