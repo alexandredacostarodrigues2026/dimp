@@ -92,7 +92,7 @@ def carregar_eventos(caminho: str, limite: int) -> tuple[dict[str, list[dict[str
         if evento.reg == "00000":
             # Armazena dt_tx|hora_tx provisório; cnpj será prefixado quando 0000 chegar
             row = serializar_registro(evento, "")
-            chave_tx_ativa = row.get("chave_00000", "")
+            chave_tx_ativa = f"{evento.registro.dt_tx}|{evento.registro.hora_tx}"  # type: ignore[union-attr]
             pendente_00000 = row
 
         elif evento.reg == "0000":
