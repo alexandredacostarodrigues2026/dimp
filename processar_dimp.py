@@ -267,8 +267,10 @@ def chave_00000(r: "Registro00000", cnpj_ip: str = "") -> str:
     return f"{prefixo}{r.dt_tx}|{r.hora_tx}"
 
 
-def chave_0000(r: "Registro0000") -> str:
-    return r.cnpj_ip
+def chave_0000(r: "Registro0000", chave_tx: str = "") -> str:
+    """PK composta: cnpj_ip|dt_tx|hora_tx (chave_tx fornecida pelo 00000 pai).
+    Fallback para cnpj_ip isolado caso chave_tx nao esteja disponivel."""
+    return chave_tx if chave_tx else r.cnpj_ip
 
 
 def chave_1100(r: "Registro1100") -> str:

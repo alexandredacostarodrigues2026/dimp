@@ -24,8 +24,6 @@ from processar_dimp import (
     Registro1100,
     Registro1110,
     Registro1115,
-    chave_00000,
-    chave_0000,
     chave_1100,
     chave_1110,
     parse_dimp,
@@ -48,8 +46,7 @@ REGISTROS_ALVO = ("00000", "0000", "0100", "0200", "1100", "1110", "1115")
 
 def serializar_registro(
     evento: EventoDimp,
-    chave_tx: str = "",
-    chave_ip: str = "",
+    chave_tx: str = "",    # cnpj_ip|dt_tx|hora_tx — chave composta de transmissão
 ) -> dict[str, Any]:
     registro = evento.registro
     if is_dataclass(registro):
@@ -59,21 +56,21 @@ def serializar_registro(
             if not is_dataclass(getattr(registro, f.name))
         }
         if isinstance(registro, Registro00000):
-            dados["chave_00000"] = chave_00000(registro)
+            dados["chave_00000"] = chave_tx             # cnpj|dt_tx|hora_tx
         elif isinstance(registro, Registro0000):
-            dados["chave_pai_00000"] = chave_tx
-            dados["chave_0000"] = chave_0000(registro)
+            dados["chave_pai_00000"] = chave_tx         # FK → 00000
+            dados["chave_0000"] = chave_tx              # PK: cnpj|dt_tx|hora_tx
         elif isinstance(registro, (Registro0100, Registro0200)):
-            dados["chave_pai_0000"] = chave_ip
+            dados["chave_pai_0000"] = chave_tx          # cnpj|dt_tx|hora_tx
         elif isinstance(registro, Registro1100):
-            dados["chave_pai_0000"] = chave_ip
+            dados["chave_pai_0000"] = chave_tx          # cnpj|dt_tx|hora_tx
             dados["chave_1100"] = chave_1100(registro)
         elif isinstance(registro, Registro1110):
-            dados["chave_pai_0000"] = chave_ip
+            dados["chave_pai_0000"] = chave_tx          # cnpj|dt_tx|hora_tx
             dados["chave_pai_1100"] = chave_1100(registro.pai_1100)
             dados["chave_1110"] = chave_1110(registro)
         elif isinstance(registro, Registro1115):
-            dados["chave_pai_0000"] = chave_ip
+            dados["chave_pai_0000"] = chave_tx          # cnpj|dt_tx|hora_tx
             dados["chave_pai_1110"] = chave_1110(registro.pai_1110)
             dados["chave_pai_1100"] = chave_1100(registro.pai_1110.pai_1100)
     else:
@@ -86,37 +83,33 @@ def serializar_registro(
 def carregar_eventos(caminho: str, limite: int) -> tuple[dict[str, list[dict[str, Any]]], dict[str, int]]:
     contagem: Counter[str] = Counter()
     tabelas: dict[str, list[dict[str, Any]]] = {reg: [] for reg in REGISTROS_ALVO}
-    chave_tx_ativa = ""   # cnpj|dt_tx|hora_tx — preenchida após 0000 ser lido
-    chave_ip_ativa = ""   # cnpj_ip
-    pendente_00000: dict[str, Any] | None = None  # row do 00000 aguardando o cnpj do 0000
+    chave_tx_ativa = ""  # cnpj|dt_tx|hora_tx — definida quando 0000 é lido
+    pendente_00000: dict[str, Any] | None = None  # row do 00000 aguarda cnpj do 0000
 
     for evento in parse_dimp(Path(caminho)):
         contagem[evento.reg] += 1
 
         if evento.reg == "00000":
-            row = serializar_registro(evento, "", "")
-            # Guarda dt_tx|hora_tx provisoriamente; será prefixado com cnpj quando 0000 chegar
+            # Armazena dt_tx|hora_tx provisório; cnpj será prefixado quando 0000 chegar
+            row = serializar_registro(evento, "")
             chave_tx_ativa = row.get("chave_00000", "")
             pendente_00000 = row
-            # Não anexa ainda — espera o cnpj
 
         elif evento.reg == "0000":
-            chave_ip_ativa = evento.registro.cnpj_ip  # type: ignore[union-attr]
-            chave_tx_ativa = f"{chave_ip_ativa}|{chave_tx_ativa}"
-            # Finaliza e anexa o 00000 com a chave completa
+            cnpj = evento.registro.cnpj_ip  # type: ignore[union-attr]
+            chave_tx_ativa = f"{cnpj}|{chave_tx_ativa}"
+            # Finaliza 00000 com a chave completa e anexa
             if pendente_00000 is not None:
                 pendente_00000["chave_00000"] = chave_tx_ativa
                 if len(tabelas["00000"]) < limite:
                     tabelas["00000"].append(pendente_00000)
                 pendente_00000 = None
-            # Serializa 0000 já com chave_tx completa
+            # Serializa 0000 com chave_tx já completa
             if len(tabelas["0000"]) < limite:
-                row = serializar_registro(evento, chave_tx_ativa, chave_ip_ativa)
-                tabelas["0000"].append(row)
+                tabelas["0000"].append(serializar_registro(evento, chave_tx_ativa))
 
         elif evento.reg in REGISTROS_ALVO and len(tabelas[evento.reg]) < limite:
-            row = serializar_registro(evento, chave_tx_ativa, chave_ip_ativa)
-            tabelas[evento.reg].append(row)
+            tabelas[evento.reg].append(serializar_registro(evento, chave_tx_ativa))
 
     return tabelas, dict(contagem)
 
