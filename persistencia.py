@@ -60,7 +60,7 @@ CREATE INDEX IF NOT EXISTS idx_1100_lote
 
 CREATE TABLE IF NOT EXISTS reg_1110 (
     chave_1110      TEXT PRIMARY KEY,
-    chave_pai_1100  TEXT NOT NULL REFERENCES reg_1100(chave_1100),
+    chave_pai_1100  TEXT NOT NULL REFERENCES reg_1100(chave_1100) ON DELETE CASCADE,
     chave_lote      TEXT NOT NULL,
     cod_mcapt       TEXT NOT NULL,
     dt_operacao     TEXT NOT NULL,
@@ -72,7 +72,7 @@ CREATE INDEX IF NOT EXISTS idx_1110_pai
 
 CREATE TABLE IF NOT EXISTS reg_1115 (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    chave_pai_1110  TEXT NOT NULL REFERENCES reg_1110(chave_1110),
+    chave_pai_1110  TEXT NOT NULL REFERENCES reg_1110(chave_1110) ON DELETE CASCADE,
     chave_lote      TEXT NOT NULL,
     nsu             TEXT,
     cod_aut         TEXT,
@@ -107,7 +107,8 @@ def processar_lote(db_path: Path, caminho_dimp: Path) -> dict:
          "deletados_1100": int}
 
     Lança:
-        ErroRetificacao — se alguma regra V10 for violada (aborta sem gravar nada)
+        ErroRetificacao — se alguma regra V10 for violada (aborta sem gravar nada);
+                          inclui retificação sem declaração normal prévia no banco
         ValueError      — se o arquivo não contiver registro 0000
     """
     criar_banco(db_path)
@@ -149,6 +150,21 @@ def processar_lote(db_path: Path, caminho_dimp: Path) -> dict:
     with sqlite3.connect(db_path) as conn:
         conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("PRAGMA journal_mode = WAL")
+
+        # Valida existência de declaração normal antes de qualquer escrita
+        if finalidade == "2":
+            existe_normal = conn.execute(
+                "SELECT 1 FROM lote "
+                "WHERE cnpj_ip = ? AND competencia = ? AND finalidade = '1'",
+                (cnpj, competencia),
+            ).fetchone()
+
+            if not existe_normal:
+                raise ErroRetificacao(
+                    f"Erro V10: Nao existe declaracao normal (finalidade=1) "
+                    f"para CNPJ {cnpj} competencia {competencia}. "
+                    f"Processe o arquivo original antes da retificadora."
+                )
 
         # --- Operação atômica ------------------------------------------------
         with conn:

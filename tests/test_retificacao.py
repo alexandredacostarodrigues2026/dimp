@@ -176,6 +176,33 @@ class TestPersistencia:
         assert "CLI_B" in cod_clientes        # extemporâneo preservado
         assert "CLI_A" not in cod_clientes    # normal do período anterior apagado
 
+    def test_finalidade2_sem_normal_previa_bloqueado(self):
+        """Retificação sem declaração normal prévia no banco deve lançar ErroRetificacao."""
+        db = self._novo_banco()
+        arq = _arquivo_temp(_dimp("2", ind_extemp="0"))
+
+        with pytest.raises(ErroRetificacao, match="finalidade=1"):
+            processar_lote(db, arq)
+
+        with sqlite3.connect(db) as conn:
+            qtd = conn.execute("SELECT COUNT(*) FROM reg_1100").fetchone()[0]
+        assert qtd == 0  # nada foi gravado
+
+    def test_finalidade2_com_normal_previa_aceito(self):
+        """Retificação com declaração normal prévia no banco deve processar normalmente."""
+        db = self._novo_banco()
+
+        # Primeiro: processa o arquivo normal
+        arq_normal = _arquivo_temp(_dimp("1", ind_extemp="0"))
+        resultado_normal = processar_lote(db, arq_normal)
+        assert resultado_normal["finalidade"] == "1"
+
+        # Depois: processa a retificadora para o mesmo CNPJ + competência
+        arq_retif = _arquivo_temp(_dimp("2", ind_extemp="0"))
+        resultado_retif = processar_lote(db, arq_retif)
+        assert resultado_retif["finalidade"] == "2"
+        assert resultado_retif["deletados_1100"] >= 1
+
     def test_finalidade2_erro_aborts_sem_gravar(self):
         """ErroRetificacao em finalidade 2 não persiste nenhum dado."""
         db = self._novo_banco()
