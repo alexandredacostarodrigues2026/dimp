@@ -2,6 +2,37 @@
 
 ---
 
+## 2026-06-12 — Padronização de chaves compostas globalmente únicas
+
+### Problema resolvido
+`chave_0000 = cnpj_ip` e `chave_1100 = cod_cliente|dt_ini|dt_fin` não eram únicas em escala:
+duas IPs distintas podiam ter o mesmo `cod_cliente` no mesmo período, gerando colisão.
+
+### Modelo de chaves após refatoração
+
+| Registro | Chave própria | Chave FK para pai |
+|---|---|---|
+| `00000` | `cnpj\|dt_tx\|hora_tx` | — |
+| `0000` | `cnpj\|dt_tx\|hora_tx` | `chave_pai_00000` |
+| `0100` / `0200` | — | `chave_pai_0000 = cnpj\|dt_tx\|hora_tx` |
+| `1100` | `cnpj\|dt_tx\|hora_tx\|cod_cliente\|dt_ini\|dt_fin` | `chave_pai_0000` |
+| `1110` | `cnpj\|dt_tx\|hora_tx\|cod_cliente\|dt_ini\|dt_fin\|cod_mcapt\|dt_operacao` | `chave_pai_1100`, `chave_pai_0000` |
+| `1115` | — | `chave_pai_1110`, `chave_pai_1100`, `chave_pai_0000` |
+
+### `app.py`
+- `serializar_registro`: parâmetro `chave_ip` removido — agora recebe apenas `chave_tx` (`cnpj|dt_tx|hora_tx`).
+- `chave_0000` e `chave_pai_00000` em `0000` usam `chave_tx` diretamente.
+- `chave_1100` serializado como `f"{chave_tx}|{chave_1100(r)}"`.
+- `chave_1110` serializado como `f"{chave_tx}|{chave_1110(r)}"`.
+- Todos os `chave_pai_*` nos filhos seguem o mesmo padrão de prefixo.
+- **Fix**: `chave_00000` incompleta — `dt_tx|hora_tx` agora lido diretamente de `evento.registro`, não do row (que estava vazio antes do cnpj ser conhecido).
+
+### `processar_dimp.py`
+- `chave_00000(r, cnpj_ip="")`: aceita cnpj opcional; fallback para `dt_tx|hora_tx` isolado.
+- `chave_0000(r, chave_tx="")`: aceita chave_tx opcional; fallback para `cnpj_ip` isolado.
+
+---
+
 ## 2026-06-11 — Cópia automática para raiz de extraidos e chaves de hierarquia completas
 
 ### `app.py`

@@ -47,15 +47,15 @@ Texto pipe-delimited (`|`), encoding **ISO-8859-1**. Cada linha começa e termin
 
 ### Registros suportados
 
-| Registro | Descrição | Chave de ligação |
-|---|---|---|
-| `00000` | Transmissão — data e hora extraídas do protocolo ELP | `chave_00000 = dt_tx\|hora_tx` |
-| `0000` | Cabeçalho — IP declarante, período | FK: `chave_pai_00000` |
-| `0100` | Cadastro de clientes (CPF / CNPJ) | — |
-| `0200` | Meios de captura (maquininhas) | — |
-| `1100` | Resumo mensal por cliente | `chave_1100 = cod_cliente\|dt_ini\|dt_fin` |
-| `1110` | Resumo diário dentro do `1100` | FK: `chave_pai_1100`; `chave_1110 = chave_1100\|cod_mcapt\|dt_operacao` |
-| `1115` | Transações individuais (NSU, valor, natureza) | FK: `chave_pai_1110`, `chave_pai_1100` |
+| Registro | Descrição | Chave própria | FKs |
+|---|---|---|---|
+| `00000` | Transmissão — data e hora do protocolo ELP | `cnpj\|dt_tx\|hora_tx` | — |
+| `0000` | Cabeçalho — IP declarante, período | `cnpj\|dt_tx\|hora_tx` | `chave_pai_00000` |
+| `0100` | Cadastro de clientes (CPF / CNPJ) | — | `chave_pai_0000` |
+| `0200` | Meios de captura (maquininhas) | — | `chave_pai_0000` |
+| `1100` | Resumo mensal por cliente | `cnpj\|dt_tx\|hora_tx\|cod_cliente\|dt_ini\|dt_fin` | `chave_pai_0000` |
+| `1110` | Resumo diário | `cnpj\|dt_tx\|hora_tx\|cod_cliente\|dt_ini\|dt_fin\|cod_mcapt\|dt_op` | `chave_pai_1100`, `chave_pai_0000` |
+| `1115` | Transações individuais (NSU, valor, natureza) | — | `chave_pai_1110`, `chave_pai_1100`, `chave_pai_0000` |
 
 ### Hierarquia
 
@@ -75,6 +75,12 @@ O campo `dt_tx` (data de transmissão) e `hora_tx` são extraídos em cascata:
 1. String de protocolo `P<num>(AAAAMMDD)(HHMMSS)W` na primeira linha do arquivo (`.elp` prepended)
 2. Data formatada `YYYY/MM/DD HH:MM:SS` no cabeçalho
 3. Padrão `DD-MM-YYYY_HHMMSS` no nome do caminho do arquivo
+
+### Chave composta — unicidade global
+
+Todas as chaves são prefixadas com `cnpj|dt_tx|hora_tx` (a chave do `00000`), garantindo que
+registros de instituições diferentes nunca colidam, mesmo que tenham `cod_cliente` idêntico.
+O CNPJ é armazenado como string pura (14 dígitos, sem máscara), conforme o layout oficial DIMP V10.
 
 ## Módulo `processar_dimp.py`
 
