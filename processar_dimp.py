@@ -12,6 +12,11 @@ from typing import Dict, Generator, Iterable, Optional
 
 LOG = logging.getLogger("dimp")
 
+
+class ErroRetificacao(Exception):
+    """Regra de negócio V10 violada em arquivo retificador (finalidade=2).
+    Não é capturada pelo handler de linha — aborta o parsing inteiro."""
+
 # P<numero>(AAAAMMDD)(HHMMSS)W  — string de protocolo TEF/TED
 _RE_DT_TX_PROTOCOLO = re.compile(r"P\d*?(20\d{6})(\d{6})W")
 _RE_DT_TX_HEADER    = re.compile(r"\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}")
@@ -291,6 +296,7 @@ class EventoDimp:
 class EstadoDimp:
     def __init__(self) -> None:
         self.abertura: Optional[Registro0000] = None
+        self.finalidade: str = ""           # "1" Normal | "2" Retificacao
         self.clientes: Dict[str, Registro0100] = {}
         self.meios_captura: Dict[str, Registro0200] = {}
         self.resumo_mensal_ativo: Optional[Registro1100] = None
@@ -359,6 +365,19 @@ def parse_dimp(caminho: Path) -> Generator[EventoDimp, None, EstadoDimp]:
     for numero_linha, campos in iter_linhas_dimp(caminho):
         reg = campos[0]
 
+        # Validação V10 para retificações — aborta o parsing se violada
+        if estado.finalidade == "2":
+            if reg in ("1200", "1600"):
+                raise ErroRetificacao(
+                    f"Erro V10: Registros 1200/1600 proibidos em retificacoes "
+                    f"(linha {numero_linha}, REG={reg})"
+                )
+            if reg == "1100" and campo(campos, 4) == "1":
+                raise ErroRetificacao(
+                    f"Erro V10: Retificadora nao permite IND_EXTEMP=1 no reg 1100 "
+                    f"(linha {numero_linha}, cod_cliente={campo(campos, 2)})"
+                )
+
         try:
             if reg == "00000":
                 registro = Registro00000(dt_tx=campo(campos, 1), hora_tx=campo(campos, 2))
@@ -372,6 +391,7 @@ def parse_dimp(caminho: Path) -> Generator[EventoDimp, None, EstadoDimp]:
                     yield EventoDimp(0, "00000", Registro00000(dt_tx=dt_tx, hora_tx=hora_tx))
                     emitiu_00000 = True
                 estado.abertura = Registro0000.from_campos(campos)
+                estado.finalidade = estado.abertura.finalidade
                 yield EventoDimp(numero_linha, reg, estado.abertura)
 
             elif reg == "0100":
