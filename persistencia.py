@@ -19,6 +19,8 @@ from processar_dimp import (
     ErroRetificacao,
     Registro0000,
     Registro00000,
+    Registro0100,
+    Registro0200,
     Registro1100,
     Registro1110,
     Registro1115,
@@ -43,6 +45,31 @@ CREATE TABLE IF NOT EXISTS lote (
     dt_fin      TEXT NOT NULL,             -- período declarado (AAAAMMDD) — chave de período
     criado_em   TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS reg_0100 (
+    chave_0100        TEXT PRIMARY KEY,   -- chave_lote|cod_cliente
+    chave_lote        TEXT NOT NULL REFERENCES lote(chave_lote),
+    cnpj_ip           TEXT NOT NULL,
+    cod_cliente       TEXT NOT NULL,
+    cnpj              TEXT,
+    cpf               TEXT,
+    nome_razao_social TEXT,
+    uf                TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_0100_cliente
+    ON reg_0100 (cnpj_ip, cod_cliente);
+
+CREATE TABLE IF NOT EXISTS reg_0200 (
+    chave_0200      TEXT PRIMARY KEY,   -- chave_lote|cod_mcapt
+    chave_lote      TEXT NOT NULL REFERENCES lote(chave_lote),
+    cnpj_ip         TEXT NOT NULL,
+    cod_mcapt       TEXT NOT NULL,
+    cod_ip          TEXT,
+    tipo_tecnologia TEXT NOT NULL,
+    marca           TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_0200_mcapt
+    ON reg_0200 (cnpj_ip, cod_mcapt);
 
 CREATE TABLE IF NOT EXISTS reg_1100 (
     chave_1100  TEXT PRIMARY KEY,
@@ -172,6 +199,8 @@ def processar_lote(db_path: Path, caminho_dimp: Path) -> dict:
     # Coleta dados do parsing (ErroRetificacao propaga se violada)
     cabecalho_0000: Registro0000 | None = None
     cabecalho_00000: Registro00000 | None = None
+    rows_0100: list[Registro0100] = []
+    rows_0200: list[Registro0200] = []
     rows_1100: list[Registro1100] = []
     rows_1110: list[Registro1110] = []
     rows_1115: list[Registro1115] = []
@@ -181,6 +210,10 @@ def processar_lote(db_path: Path, caminho_dimp: Path) -> dict:
             cabecalho_00000 = ev.registro  # type: ignore[assignment]
         elif ev.reg == "0000":
             cabecalho_0000 = ev.registro   # type: ignore[assignment]
+        elif ev.reg == "0100":
+            rows_0100.append(ev.registro)  # type: ignore[arg-type]
+        elif ev.reg == "0200":
+            rows_0200.append(ev.registro)  # type: ignore[arg-type]
         elif ev.reg == "1100":
             rows_1100.append(ev.registro)  # type: ignore[arg-type]
         elif ev.reg == "1110":
@@ -246,6 +279,38 @@ def processar_lote(db_path: Path, caminho_dimp: Path) -> dict:
                 )
                 deletados = cur.rowcount
 
+            # INSERT 0100
+            conn.executemany(
+                "INSERT OR REPLACE INTO reg_0100 "
+                "(chave_0100, chave_lote, cnpj_ip, cod_cliente, cnpj, cpf, nome_razao_social, uf) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        f"{chave_lote}|{r.cod_cliente}",
+                        chave_lote, cnpj,
+                        r.cod_cliente, r.cnpj, r.cpf,
+                        r.nome_razao_social, r.uf,
+                    )
+                    for r in rows_0100
+                ],
+            )
+
+            # INSERT 0200
+            conn.executemany(
+                "INSERT OR REPLACE INTO reg_0200 "
+                "(chave_0200, chave_lote, cnpj_ip, cod_mcapt, cod_ip, tipo_tecnologia, marca) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        f"{chave_lote}|{r.cod_mcapt}",
+                        chave_lote, cnpj,
+                        r.cod_mcapt, r.cod_ip,
+                        r.tipo_tecnologia, r.marca,
+                    )
+                    for r in rows_0200
+                ],
+            )
+
             # INSERT 1100
             conn.executemany(
                 "INSERT OR REPLACE INTO reg_1100 "
@@ -306,6 +371,8 @@ def processar_lote(db_path: Path, caminho_dimp: Path) -> dict:
         "cnpj_ip": cnpj,
         "competencia": competencia,
         "chave_lote": chave_lote,
+        "inseridos_0100": len(rows_0100),
+        "inseridos_0200": len(rows_0200),
         "inseridos_1100": len(rows_1100),
         "inseridos_1110": len(rows_1110),
         "inseridos_1115": len(rows_1115),

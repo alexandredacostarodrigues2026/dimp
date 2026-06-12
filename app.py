@@ -81,10 +81,12 @@ def serializar_registro(
             dados["chave_pai_0000"] = chave_tx          # cnpj|dt_tx|hora_tx
         elif isinstance(registro, Registro1100):
             dados["chave_pai_0000"] = chave_tx
+            dados["chave_pai_0100"] = f"{chave_tx}|{registro.cod_cliente}"
             dados["chave_1100"] = f"{chave_tx}|{chave_1100(registro)}"
         elif isinstance(registro, Registro1110):
             dados["chave_pai_0000"] = chave_tx
             dados["chave_pai_1100"] = f"{chave_tx}|{chave_1100(registro.pai_1100)}"
+            dados["chave_pai_0200"] = f"{chave_tx}|{registro.cod_mcapt}"
             dados["chave_1110"] = f"{chave_tx}|{chave_1110(registro)}"
         elif isinstance(registro, Registro1115):
             dados["chave_pai_0000"] = chave_tx
@@ -214,6 +216,42 @@ def gerar_comparacao(caminho: str) -> tuple[list[dict], list[dict]]:
         })
 
     return linhas_1100, linhas_1110
+
+
+@st.cache_data(show_spinner=False)
+def gerar_validacao(caminho: str) -> tuple[list[dict], list[dict]]:
+    """Passagem completa: detecta registros 1100/1110 sem cadastro em 0100/0200."""
+    clientes: set[str] = set()
+    mcapts: set[str] = set()
+    orphans_1100: list[dict] = []
+    orphans_1110: list[dict] = []
+
+    for ev in parse_dimp(Path(caminho)):
+        if ev.reg == "0100":
+            clientes.add(ev.registro.cod_cliente)          # type: ignore[union-attr]
+        elif ev.reg == "0200":
+            mcapts.add(ev.registro.cod_mcapt)              # type: ignore[union-attr]
+        elif ev.reg == "1100":
+            r = ev.registro
+            if r.cod_cliente not in clientes:              # type: ignore[union-attr]
+                orphans_1100.append({
+                    "linha": ev.linha,
+                    "cod_cliente": r.cod_cliente,          # type: ignore[union-attr]
+                    "dt_ini": r.dt_ini,                    # type: ignore[union-attr]
+                    "dt_fin": r.dt_fin,                    # type: ignore[union-attr]
+                    "problema": "cod_cliente sem 0100",
+                })
+        elif ev.reg == "1110":
+            r = ev.registro
+            if r.cod_mcapt not in mcapts:                  # type: ignore[union-attr]
+                orphans_1110.append({
+                    "linha": ev.linha,
+                    "cod_mcapt": r.cod_mcapt,              # type: ignore[union-attr]
+                    "dt_operacao": r.dt_operacao,          # type: ignore[union-attr]
+                    "problema": "cod_mcapt sem 0200",
+                })
+
+    return orphans_1100, orphans_1110
 
 
 PASTA_ORIGINAIS = Path("originais")
@@ -475,3 +513,41 @@ try:
 
 except Exception as exc:
     st.error(f"Erro ao gerar comparação: {exc}")
+
+st.divider()
+st.subheader("Validação de Cadastro vs Operações")
+
+try:
+    with st.spinner("Verificando integridade cadastral..."):
+        orphans_1100, orphans_1110 = gerar_validacao(caminho)
+
+    col_v1, col_v2 = st.columns(2)
+    col_v1.metric(
+        "1100 sem 0100 (clientes sem cadastro)",
+        len(orphans_1100),
+        delta=None if not orphans_1100 else f"{len(orphans_1100)} órfão(s)",
+        delta_color="inverse",
+    )
+    col_v2.metric(
+        "1110 sem 0200 (meios sem cadastro)",
+        len(orphans_1110),
+        delta=None if not orphans_1110 else f"{len(orphans_1110)} órfão(s)",
+        delta_color="inverse",
+    )
+
+    if orphans_1100:
+        with st.expander(f"1100 órfãos — {len(orphans_1100)} registro(s) sem 0100"):
+            st.caption("COD_CLIENTE informado no 1100 não possui cadastro correspondente no 0100 do mesmo arquivo (resíduo proibido pelo V10).")
+            st.dataframe(orphans_1100, use_container_width=True, hide_index=True)
+    else:
+        st.success("Todos os COD_CLIENTE do 1100 têm cadastro em 0100.")
+
+    if orphans_1110:
+        with st.expander(f"1110 órfãos — {len(orphans_1110)} registro(s) sem 0200"):
+            st.caption("COD_MCAPT informado no 1110 não possui cadastro correspondente no 0200 do mesmo arquivo (resíduo proibido pelo V10).")
+            st.dataframe(orphans_1110, use_container_width=True, hide_index=True)
+    else:
+        st.success("Todos os COD_MCAPT do 1110 têm cadastro em 0200.")
+
+except Exception as exc:
+    st.error(f"Erro ao gerar validação: {exc}")

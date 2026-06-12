@@ -413,6 +413,11 @@ def parse_dimp(caminho: Path) -> Generator[EventoDimp, None, EstadoDimp]:
             elif reg == "1100":
                 estado.fechar_1100()
                 registro = Registro1100.from_campos(campos)
+                if registro.cod_cliente not in estado.clientes:
+                    LOG.warning(
+                        "Linha %s: 1100 cod_cliente=%s sem cadastro em 0100 (residuo V10)",
+                        numero_linha, registro.cod_cliente,
+                    )
                 estado.resumo_mensal_ativo = registro
                 yield EventoDimp(numero_linha, reg, registro)
 
@@ -422,11 +427,16 @@ def parse_dimp(caminho: Path) -> Generator[EventoDimp, None, EstadoDimp]:
                     LOG.warning("Linha %s: registro 1110 sem pai 1100 ativo — ignorado", numero_linha)
                     continue
                 registro = Registro1110.from_campos(campos, estado.resumo_mensal_ativo)
+                mcapt = estado.meios_captura.get(registro.cod_mcapt)
+                if mcapt is None:
+                    LOG.warning(
+                        "Linha %s: 1110 cod_mcapt=%s sem cadastro em 0200 (residuo V10)",
+                        numero_linha, registro.cod_mcapt,
+                    )
+                else:
+                    estado.tecnologias_do_1100.add(mcapt.tipo_tecnologia)
                 estado.operacao_diaria_ativa = registro
                 estado.soma_1110_do_1100 += registro.valor_total_diario
-                mcapt = estado.meios_captura.get(registro.cod_mcapt)
-                if mcapt:
-                    estado.tecnologias_do_1100.add(mcapt.tipo_tecnologia)
                 yield EventoDimp(numero_linha, reg, registro)
 
             elif reg == "1115":
