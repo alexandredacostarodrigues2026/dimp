@@ -261,8 +261,10 @@ class Registro1115:
         )
 
 
-def chave_00000(r: "Registro00000") -> str:
-    return f"{r.dt_tx}|{r.hora_tx}"
+def chave_00000(r: "Registro00000", cnpj_ip: str = "") -> str:
+    """Chave completa: cnpj_ip|dt_tx|hora_tx. cnpj_ip vem do Registro0000 subsequente."""
+    prefixo = f"{cnpj_ip}|" if cnpj_ip else ""
+    return f"{prefixo}{r.dt_tx}|{r.hora_tx}"
 
 
 def chave_0000(r: "Registro0000") -> str:

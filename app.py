@@ -86,17 +86,36 @@ def serializar_registro(
 def carregar_eventos(caminho: str, limite: int) -> tuple[dict[str, list[dict[str, Any]]], dict[str, int]]:
     contagem: Counter[str] = Counter()
     tabelas: dict[str, list[dict[str, Any]]] = {reg: [] for reg in REGISTROS_ALVO}
-    chave_tx_ativa = ""
-    chave_ip_ativa = ""
+    chave_tx_ativa = ""   # cnpj|dt_tx|hora_tx — preenchida após 0000 ser lido
+    chave_ip_ativa = ""   # cnpj_ip
+    pendente_00000: dict[str, Any] | None = None  # row do 00000 aguardando o cnpj do 0000
 
     for evento in parse_dimp(Path(caminho)):
         contagem[evento.reg] += 1
-        if evento.reg in REGISTROS_ALVO and len(tabelas[evento.reg]) < limite:
+
+        if evento.reg == "00000":
+            row = serializar_registro(evento, "", "")
+            # Guarda dt_tx|hora_tx provisoriamente; será prefixado com cnpj quando 0000 chegar
+            chave_tx_ativa = row.get("chave_00000", "")
+            pendente_00000 = row
+            # Não anexa ainda — espera o cnpj
+
+        elif evento.reg == "0000":
+            chave_ip_ativa = evento.registro.cnpj_ip  # type: ignore[union-attr]
+            chave_tx_ativa = f"{chave_ip_ativa}|{chave_tx_ativa}"
+            # Finaliza e anexa o 00000 com a chave completa
+            if pendente_00000 is not None:
+                pendente_00000["chave_00000"] = chave_tx_ativa
+                if len(tabelas["00000"]) < limite:
+                    tabelas["00000"].append(pendente_00000)
+                pendente_00000 = None
+            # Serializa 0000 já com chave_tx completa
+            if len(tabelas["0000"]) < limite:
+                row = serializar_registro(evento, chave_tx_ativa, chave_ip_ativa)
+                tabelas["0000"].append(row)
+
+        elif evento.reg in REGISTROS_ALVO and len(tabelas[evento.reg]) < limite:
             row = serializar_registro(evento, chave_tx_ativa, chave_ip_ativa)
-            if evento.reg == "00000":
-                chave_tx_ativa = row.get("chave_00000", "")
-            elif evento.reg == "0000":
-                chave_ip_ativa = row.get("chave_0000", "")
             tabelas[evento.reg].append(row)
 
     return tabelas, dict(contagem)
