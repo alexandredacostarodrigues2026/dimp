@@ -63,16 +63,16 @@ def serializar_registro(
         elif isinstance(registro, (Registro0100, Registro0200)):
             dados["chave_pai_0000"] = chave_tx          # cnpj|dt_tx|hora_tx
         elif isinstance(registro, Registro1100):
-            dados["chave_pai_0000"] = chave_tx          # cnpj|dt_tx|hora_tx
-            dados["chave_1100"] = chave_1100(registro)
+            dados["chave_pai_0000"] = chave_tx
+            dados["chave_1100"] = f"{chave_tx}|{chave_1100(registro)}"
         elif isinstance(registro, Registro1110):
-            dados["chave_pai_0000"] = chave_tx          # cnpj|dt_tx|hora_tx
-            dados["chave_pai_1100"] = chave_1100(registro.pai_1100)
-            dados["chave_1110"] = chave_1110(registro)
+            dados["chave_pai_0000"] = chave_tx
+            dados["chave_pai_1100"] = f"{chave_tx}|{chave_1100(registro.pai_1100)}"
+            dados["chave_1110"] = f"{chave_tx}|{chave_1110(registro)}"
         elif isinstance(registro, Registro1115):
-            dados["chave_pai_0000"] = chave_tx          # cnpj|dt_tx|hora_tx
-            dados["chave_pai_1110"] = chave_1110(registro.pai_1110)
-            dados["chave_pai_1100"] = chave_1100(registro.pai_1110.pai_1100)
+            dados["chave_pai_0000"] = chave_tx
+            dados["chave_pai_1110"] = f"{chave_tx}|{chave_1110(registro.pai_1110)}"
+            dados["chave_pai_1100"] = f"{chave_tx}|{chave_1100(registro.pai_1110.pai_1100)}"
     else:
         dados = {"valor": str(registro)}
 
