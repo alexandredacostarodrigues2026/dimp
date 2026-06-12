@@ -3,9 +3,11 @@ Persistência DIMP V10 em SQLite.
 
 Regras de negócio:
   Finalidade 1 (Normal)      — INSERT dos registros do arquivo (inclui IND_EXTEMP 0 e 1)
-  Finalidade 2 (Retificação) — DELETE cirúrgico WHERE cnpj_ip + competencia + ind_extemp='0',
+  Finalidade 2 (Retificação) — DELETE cirúrgico WHERE cnpj_ip + dt_ini + dt_fin + ind_extemp='0',
                                depois INSERT dos novos registros.
                                Registros com IND_EXTEMP='1' de envios anteriores são preservados.
+                               Período determinado por dt_ini + dt_fin (AAAAMMDD), não por competencia,
+                               para cobrir declarações extemporâneas onde competencia ≠ mês dos dados.
 """
 from __future__ import annotations
 
@@ -37,6 +39,8 @@ CREATE TABLE IF NOT EXISTS lote (
     finalidade  TEXT NOT NULL,
     dt_tx       TEXT NOT NULL,
     hora_tx     TEXT NOT NULL,
+    dt_ini      TEXT NOT NULL,             -- período declarado (AAAAMMDD) — chave de período
+    dt_fin      TEXT NOT NULL,             -- período declarado (AAAAMMDD) — chave de período
     criado_em   TEXT DEFAULT (datetime('now'))
 );
 
@@ -52,9 +56,9 @@ CREATE TABLE IF NOT EXISTS reg_1100 (
     valor       TEXT NOT NULL,
     qtd         INTEGER NOT NULL
 );
--- Índice usado pelo DELETE cirúrgico em retificações
+-- Índice usado pelo DELETE cirúrgico em retificações (período = dt_ini + dt_fin)
 CREATE INDEX IF NOT EXISTS idx_1100_retificacao
-    ON reg_1100 (cnpj_ip, competencia, ind_extemp);
+    ON reg_1100 (cnpj_ip, dt_ini, dt_fin, ind_extemp);
 CREATE INDEX IF NOT EXISTS idx_1100_lote
     ON reg_1100 (chave_lote);
 
@@ -138,6 +142,8 @@ def processar_lote(db_path: Path, caminho_dimp: Path) -> dict:
     cnpj = cabecalho_0000.cnpj_ip
     competencia = cabecalho_0000.competencia
     finalidade = cabecalho_0000.finalidade
+    dt_ini_lote = cabecalho_0000.dt_ini   # período da declaração (AAAAMMDD)
+    dt_fin_lote = cabecalho_0000.dt_fin   # período da declaração (AAAAMMDD)
     dt_tx = cabecalho_00000.dt_tx if cabecalho_00000 else ""
     hora_tx = cabecalho_00000.hora_tx if cabecalho_00000 else ""
     chave_lote = f"{cnpj}|{dt_tx}|{hora_tx}"
@@ -152,17 +158,19 @@ def processar_lote(db_path: Path, caminho_dimp: Path) -> dict:
         conn.execute("PRAGMA journal_mode = WAL")
 
         # Valida existência de declaração normal antes de qualquer escrita
+        # Período identificado por dt_ini + dt_fin, não por competencia,
+        # para cobrir extemporâneos onde competencia ≠ mês dos dados.
         if finalidade == "2":
             existe_normal = conn.execute(
                 "SELECT 1 FROM lote "
-                "WHERE cnpj_ip = ? AND competencia = ? AND finalidade = '1'",
-                (cnpj, competencia),
+                "WHERE cnpj_ip = ? AND dt_ini = ? AND dt_fin = ? AND finalidade = '1'",
+                (cnpj, dt_ini_lote, dt_fin_lote),
             ).fetchone()
 
             if not existe_normal:
                 raise ErroRetificacao(
                     f"Erro V10: Nao existe declaracao normal (finalidade=1) "
-                    f"para CNPJ {cnpj} competencia {competencia}. "
+                    f"para CNPJ {cnpj} periodo {dt_ini_lote} a {dt_fin_lote}. "
                     f"Processe o arquivo original antes da retificadora."
                 )
 
@@ -171,18 +179,18 @@ def processar_lote(db_path: Path, caminho_dimp: Path) -> dict:
             # Registra o lote
             conn.execute(
                 "INSERT OR REPLACE INTO lote "
-                "(chave_lote, cnpj_ip, competencia, finalidade, dt_tx, hora_tx) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (chave_lote, cnpj, competencia, finalidade, dt_tx, hora_tx),
+                "(chave_lote, cnpj_ip, competencia, finalidade, dt_tx, hora_tx, dt_ini, dt_fin) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (chave_lote, cnpj, competencia, finalidade, dt_tx, hora_tx, dt_ini_lote, dt_fin_lote),
             )
 
             if finalidade == "2":
-                # DELETE cirúrgico: remove apenas IND_EXTEMP='0' do período
+                # DELETE cirúrgico: remove apenas IND_EXTEMP='0' do período exato (dt_ini+dt_fin)
                 # Preserva IND_EXTEMP='1' (extemporâneos de envios anteriores)
                 cur = conn.execute(
                     "DELETE FROM reg_1100 "
-                    "WHERE cnpj_ip = ? AND competencia = ? AND ind_extemp = '0'",
-                    (cnpj, competencia),
+                    "WHERE cnpj_ip = ? AND dt_ini = ? AND dt_fin = ? AND ind_extemp = '0'",
+                    (cnpj, dt_ini_lote, dt_fin_lote),
                 )
                 deletados = cur.rowcount
 

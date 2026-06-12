@@ -19,19 +19,33 @@ from persistencia import criar_banco, processar_lote
 
 _CNPJ = "12345678000195"
 _CABECALHO_00000 = "|00000|20260513|144444|\n"
-_CABECALHO_0000 = "|0000|09|{finalidade}|PB|{cnpj}|EMPRESA TESTE|20260401|20260430|1|202605|\n"
-_REG_1100 = "|1100|00000000000000|999|0|{ind_extemp}|20260401|20260430|100,00|1|\n"
+_CABECALHO_0000 = "|0000|09|{finalidade}|PB|{cnpj}|EMPRESA TESTE|{dt_ini}|{dt_fin}|1|{competencia}|\n"
+_REG_1100 = "|1100|00000000000000|999|0|{ind_extemp}|{dt_ini}|{dt_fin}|100,00|1|\n"
 _REG_1110 = "|1110|TERM001|20260401|100,00|1|{cnpj}|\n"
 _REG_1115 = "|1115|NSU001||ID001|0|01|000000|100,00|1|\n"
 _REG_1200 = "|1200|campo1|campo2|\n"
 _REG_1600 = "|1600|campo1|campo2|\n"
 
+_DT_INI = "20260401"
+_DT_FIN = "20260430"
+_COMPETENCIA = "202605"
 
-def _dimp(finalidade: str, ind_extemp: str = "0", extra: str = "") -> str:
+
+def _dimp(
+    finalidade: str,
+    ind_extemp: str = "0",
+    extra: str = "",
+    dt_ini: str = _DT_INI,
+    dt_fin: str = _DT_FIN,
+    competencia: str = _COMPETENCIA,
+) -> str:
     return (
         _CABECALHO_00000
-        + _CABECALHO_0000.format(finalidade=finalidade, cnpj=_CNPJ)
-        + _REG_1100.format(ind_extemp=ind_extemp)
+        + _CABECALHO_0000.format(
+            finalidade=finalidade, cnpj=_CNPJ,
+            dt_ini=dt_ini, dt_fin=dt_fin, competencia=competencia,
+        )
+        + _REG_1100.format(ind_extemp=ind_extemp, dt_ini=dt_ini, dt_fin=dt_fin)
         + _REG_1110.format(cnpj=_CNPJ)
         + _REG_1115
         + extra
@@ -141,9 +155,10 @@ class TestPersistencia:
         # Pré-carrega: 1 registro extemp=0 e 1 extemp=1 simulados diretamente
         with sqlite3.connect(db) as conn:
             conn.execute(
-                "INSERT INTO lote (chave_lote, cnpj_ip, competencia, finalidade, dt_tx, hora_tx) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                ("LOTE_ANTIGO", _CNPJ, "202605", "1", "20260401", "080000"),
+                "INSERT INTO lote "
+                "(chave_lote, cnpj_ip, competencia, finalidade, dt_tx, hora_tx, dt_ini, dt_fin) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                ("LOTE_ANTIGO", _CNPJ, _COMPETENCIA, "1", "20260401", "080000", _DT_INI, _DT_FIN),
             )
             conn.executemany(
                 "INSERT INTO reg_1100 "
@@ -151,9 +166,11 @@ class TestPersistencia:
                 " ind_extemp, dt_ini, dt_fin, valor, qtd) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
-                    ("CHAVE_NORMAL", "LOTE_ANTIGO", _CNPJ, "202605",
-                     "CLI_A", "0", "20260401", "20260430", "500.00", 1),
-                    ("CHAVE_EXTEMP", "LOTE_ANTIGO", _CNPJ, "202605",
+                    # IND_EXTEMP=0: período do lote → deve ser apagado pela retificação
+                    ("CHAVE_NORMAL", "LOTE_ANTIGO", _CNPJ, _COMPETENCIA,
+                     "CLI_A", "0", _DT_INI, _DT_FIN, "500.00", 1),
+                    # IND_EXTEMP=1 em período diferente → deve ser preservado
+                    ("CHAVE_EXTEMP", "LOTE_ANTIGO", _CNPJ, _COMPETENCIA,
                      "CLI_B", "1", "20260301", "20260331", "200.00", 1),
                 ],
             )
@@ -168,8 +185,8 @@ class TestPersistencia:
 
         with sqlite3.connect(db) as conn:
             rows = conn.execute(
-                "SELECT cod_cliente, ind_extemp FROM reg_1100 WHERE cnpj_ip = ? AND competencia = ?",
-                (_CNPJ, "202605"),
+                "SELECT cod_cliente, ind_extemp FROM reg_1100 WHERE cnpj_ip = ?",
+                (_CNPJ,),
             ).fetchall()
 
         cod_clientes = {r[0] for r in rows}
@@ -214,3 +231,26 @@ class TestPersistencia:
         with sqlite3.connect(db) as conn:
             qtd = conn.execute("SELECT COUNT(*) FROM reg_1100").fetchone()[0]
         assert qtd == 0  # nada foi gravado
+
+    def test_finalidade2_periodo_diferente_bloqueado(self):
+        """Retificação com dt_ini/dt_fin diferente do normal deve lançar ErroRetificacao.
+
+        Cobre o caso extemporâneo: a normal existe para abril, mas a retificação
+        declara período de maio → não deve encontrar correspondência.
+        """
+        db = self._novo_banco()
+
+        # Normal para abril/2026
+        arq_normal = _arquivo_temp(_dimp("1", dt_ini="20260401", dt_fin="20260430"))
+        processar_lote(db, arq_normal)
+
+        # Retificação declara maio/2026 — período diferente, não existe normal para ele
+        arq_retif = _arquivo_temp(
+            _dimp("2", dt_ini="20260501", dt_fin="20260531", competencia="202606")
+        )
+        with pytest.raises(ErroRetificacao, match="finalidade=1"):
+            processar_lote(db, arq_retif)
+
+        with sqlite3.connect(db) as conn:
+            qtd = conn.execute("SELECT COUNT(*) FROM reg_1100").fetchone()[0]
+        assert qtd == 1  # só o normal de abril, nada da retif de maio

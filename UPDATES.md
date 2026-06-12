@@ -2,6 +2,30 @@
 
 ---
 
+## 2026-06-12 — Chave de período: competencia → dt_ini + dt_fin
+
+### Problema resolvido
+A retificação usava `competencia` (AAAAMM) para identificar o período a ser substituído.
+Isso causava dois cenários de falha:
+1. Duas declarações normais do mesmo CNPJ com mesma competência mas períodos distintos (ex: `01-15/mês` e `16-30/mês`) colidiam.
+2. Registros extemporâneos: `competencia` do arquivo não coincide com o mês real dos dados (`dt_ini`/`dt_fin` do `1100`), então o DELETE eliminava registros errados.
+
+### `persistencia.py`
+- **Schema `lote`**: adicionadas colunas `dt_ini TEXT NOT NULL` e `dt_fin TEXT NOT NULL` (período declarado no `0000`).
+- **Índice `idx_1100_retificacao`**: alterado de `(cnpj_ip, competencia, ind_extemp)` para `(cnpj_ip, dt_ini, dt_fin, ind_extemp)`.
+- **Existência de normal**: query agora usa `WHERE cnpj_ip = ? AND dt_ini = ? AND dt_fin = ? AND finalidade = '1'`.
+- **DELETE cirúrgico**: usa `WHERE cnpj_ip = ? AND dt_ini = ? AND dt_fin = ? AND ind_extemp = '0'`.
+- Período `dt_ini`/`dt_fin` extraído de `cabecalho_0000` (campo do `Registro0000`).
+
+### `tests/test_retificacao.py`
+- Templates `_CABECALHO_0000` e `_REG_1100` parametrizados com `{dt_ini}`/`{dt_fin}`.
+- Helper `_dimp()` aceita `dt_ini`, `dt_fin`, `competencia` com padrões; chamadas existentes inalteradas.
+- `test_finalidade2_delete_apenas_extemp0`: pre-load do `lote` inclui `dt_ini`/`dt_fin`; CLI_B (extemp=1) preservado tanto por `ind_extemp` quanto por período diferente.
+- **Novo**: `test_finalidade2_periodo_diferente_bloqueado` — retificação com período de maio bloqueada quando normal existe apenas para abril.
+- Total: **13 testes, todos passando**.
+
+---
+
 ## 2026-06-12 — Padronização de chaves compostas globalmente únicas
 
 ### Problema resolvido
