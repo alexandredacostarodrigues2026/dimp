@@ -82,6 +82,40 @@ Todas as chaves são prefixadas com `cnpj|dt_tx|hora_tx` (a chave do `00000`), g
 registros de instituições diferentes nunca colidam, mesmo que tenham `cod_cliente` idêntico.
 O CNPJ é armazenado como string pura (14 dígitos, sem máscara), conforme o layout oficial DIMP V10.
 
+## Banco de Dados SQLite (`persistencia.py`)
+
+Gerado ao chamar `processar_lote(db_path, caminho_dimp)`.
+
+### Tabelas
+
+| Tabela | PK | Descrição |
+|---|---|---|
+| `lote` | `chave_lote` | Um lote por arquivo — `cnpj\|dt_tx\|hora_tx` |
+| `reg_0100` | `chave_0100` | Clientes cadastrados — ligado a `reg_1100` via `cnpj_ip + cod_cliente` |
+| `reg_0200` | `chave_0200` | Meios de captura — ligado a `reg_1110` via `cnpj_ip + cod_mcapt` |
+| `reg_1100` | `chave_1100` | Resumos mensais por cliente |
+| `reg_1110` | `chave_1110` | Operações diárias (`ON DELETE CASCADE` de `reg_1100`) |
+| `reg_1115` | `id` auto | Transações individuais (`ON DELETE CASCADE` de `reg_1110`) |
+| `lkp_nat_oper` | `codigo` | Naturezas de operação com campo RCAD (VT_NAT1, VT_NAT6…) |
+| `lkp_ind_split` | `codigo` | 0=não splitado, 1=splitado |
+| `lkp_ind_nat_jur` | `codigo` | 0=CPF(PF), 1=CNPJ(PJ) |
+| `lkp_ind_tp_pix` | `codigo` | 0=Dinâmico, 1=Não Dinâmico |
+
+### Ligações cadastrais
+
+```sql
+-- Cliente → resumo mensal
+SELECT r0.nome_razao_social, r1.valor
+FROM reg_0100 r0
+JOIN reg_1100 r1 ON r0.cnpj_ip = r1.cnpj_ip AND r0.cod_cliente = r1.cod_cliente;
+
+-- Meio de captura → operações diárias
+SELECT r2.tipo_tecnologia, r11.dt_operacao, r11.valor_total
+FROM reg_0200 r2
+JOIN lote l ON l.cnpj_ip = r2.cnpj_ip
+JOIN reg_1110 r11 ON r11.chave_lote = l.chave_lote AND r11.cod_mcapt = r2.cod_mcapt;
+```
+
 ## Módulo `processar_dimp.py`
 
 Parser streaming via generator — não carrega o arquivo inteiro em memória.

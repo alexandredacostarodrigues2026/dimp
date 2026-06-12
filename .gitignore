@@ -1,5 +1,10 @@
 extraidos/
+originais/
 __pycache__/
 *.pyc
 streamlit.out.log
 streamlit.err.log
+*.db
+meu/
+"meu antigo/"
+"prompt para IA .txt"

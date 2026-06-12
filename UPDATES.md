@@ -2,6 +2,57 @@
 
 ---
 
+## 2026-06-12 — Ligações cadastrais 0100↔1100 e 0200↔1110 com validação V10
+
+### Problema resolvido
+Os registros do Bloco 0 (cadastro) e Bloco 1 (operações) não estavam ligados
+entre si, impossibilitando JOIN entre cliente/terminal e seus respectivos resumos.
+
+### `processar_dimp.py`
+- Parser emite `WARNING` quando `1100.COD_CLIENTE` não existe em `0100` (resíduo V10).
+- Parser emite `WARNING` quando `1110.COD_MCAPT` não existe em `0200` (resíduo V10).
+
+### `app.py`
+- `Registro1100` serializado com `chave_pai_0100 = cnpj|dt_tx|hora_tx|cod_cliente`.
+- `Registro1110` serializado com `chave_pai_0200 = cnpj|dt_tx|hora_tx|cod_mcapt`.
+- Nova função `gerar_validacao()` — passagem completa detectando órfãos.
+- Nova seção **"Validação de Cadastro vs Operações"** com métricas e detalhes dos órfãos.
+
+### `persistencia.py`
+- Novas tabelas `reg_0100` e `reg_0200` com índices `(cnpj_ip, cod_cliente/cod_mcapt)`.
+- `processar_lote` coleta e insere `0100`/`0200` no mesmo bloco atômico.
+- Retorno inclui `inseridos_0100` e `inseridos_0200`.
+
+### Verificado com arquivo real (W0119353-001.txt — Banco CSF SA, abril/2026)
+- 13 clientes (0100) → 13 resumos (1100): **0 órfãos**
+- 4 meios de captura (0200) → 1.141 operações diárias (1110): **0 órfãos**
+- 99.228 transações (1115) persistidas com integridade
+
+---
+
+## 2026-06-12 — Campos 1115 corrigidos + lookups de natureza de operação
+
+### Campos Registro1115 (corrigidos contra o layout oficial DIMP V10 p.38)
+
+| Campo anterior | Campo correto | Posição | Observação |
+|---|---|---|---|
+| `flag` | `ind_split` | 05 | Nome errado |
+| `natureza_operacao` | `bandeira` | 06 | Estava mapeando BANDEIRA como NAT_OPER |
+| `qtd` (int) | `nat_oper` (str) | 09 | Tipo e semântica errados |
+| — | `geo` | 10 | Campo novo |
+| — | `ind_nat_jur` | 11 | Campo novo |
+| — | `ind_tp_pix` | 12 | Campo novo |
+
+### Lookups criados em `persistencia.py`
+- `lkp_nat_oper` — 10 naturezas com coluna `rcad_campo` (VT_NAT1, VT_NAT6, VT_PIX_GAR…)
+- `lkp_ind_split`, `lkp_ind_nat_jur`, `lkp_ind_tp_pix` — semeados em `criar_banco`
+
+### `app.py`
+- Aba `1115` exibe colunas `nat_oper_desc`, `ind_split_desc`, `ind_nat_jur_desc`, `ind_tp_pix_desc`.
+- Expander "Resumo por Natureza de Operação" com qtd e valor total agrupados.
+
+---
+
 ## 2026-06-12 — Chave de período: competencia → dt_ini + dt_fin
 
 ### Problema resolvido
