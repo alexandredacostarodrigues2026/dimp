@@ -244,11 +244,14 @@ class Registro1115:
     nsu: str
     cod_aut: str
     id_transac: str
-    flag: str
-    natureza_operacao: str
-    hora: str
-    valor_transacao: Decimal
-    qtd: int
+    ind_split: str        # campo 05 — 0=não splitado, 1=splitado
+    bandeira: str         # campo 06 — código da bandeira (01=Visa, 99=outros)
+    hora: str             # campo 07 — hhmmss
+    valor_transacao: Decimal  # campo 08
+    nat_oper: str         # campo 09 — 1=crédito, 2=débito, 6=PIX, etc.
+    geo: str              # campo 10 — georreferenciamento (opcional)
+    ind_nat_jur: str      # campo 11 — 0=CPF(PF), 1=CNPJ(PJ) (opcional)
+    ind_tp_pix: str       # campo 12 — 0=dinâmico, 1=não dinâmico (opcional)
     pai_1110: Registro1110
 
     @classmethod
@@ -257,11 +260,14 @@ class Registro1115:
             nsu=campo(campos, 1),
             cod_aut=campo(campos, 2),
             id_transac=campo(campos, 3),
-            flag=campo(campos, 4),
-            natureza_operacao=campo(campos, 5),
+            ind_split=campo(campos, 4),
+            bandeira=campo(campos, 5),
             hora=campo(campos, 6),
             valor_transacao=decimal_br(campo(campos, 7)),
-            qtd=inteiro(campo(campos, 8)),
+            nat_oper=campo(campos, 8),
+            geo=campo(campos, 9),
+            ind_nat_jur=campo(campos, 10),
+            ind_tp_pix=campo(campos, 11),
             pai_1110=pai_1110,
         )
 

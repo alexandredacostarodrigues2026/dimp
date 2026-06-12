@@ -81,20 +81,72 @@ CREATE TABLE IF NOT EXISTS reg_1115 (
     nsu             TEXT,
     cod_aut         TEXT,
     id_transac      TEXT,
-    natureza        TEXT,
+    ind_split       TEXT NOT NULL DEFAULT '0',
+    bandeira        TEXT,
     hora            TEXT,
     valor           TEXT NOT NULL,
-    qtd             INTEGER NOT NULL
+    nat_oper        TEXT NOT NULL,
+    geo             TEXT,
+    ind_nat_jur     TEXT,
+    ind_tp_pix      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_1115_pai
     ON reg_1115 (chave_pai_1110);
+CREATE INDEX IF NOT EXISTS idx_1115_nat_oper
+    ON reg_1115 (nat_oper);
+
+-- Tabelas de lookup estáticas (definidas pelo leiaute DIMP V10 / RCAD V06)
+CREATE TABLE IF NOT EXISTS lkp_nat_oper (
+    codigo    TEXT PRIMARY KEY,
+    descricao TEXT NOT NULL,
+    rcad_campo TEXT
+);
+CREATE TABLE IF NOT EXISTS lkp_ind_split (
+    codigo    TEXT PRIMARY KEY,
+    descricao TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS lkp_ind_nat_jur (
+    codigo    TEXT PRIMARY KEY,
+    descricao TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS lkp_ind_tp_pix (
+    codigo    TEXT PRIMARY KEY,
+    descricao TEXT NOT NULL
+);
+"""
+
+_SEED = """
+INSERT OR IGNORE INTO lkp_nat_oper (codigo, descricao, rcad_campo) VALUES
+    ('1',  'Cartão de Crédito',                                             'VT_NAT1'),
+    ('2',  'Cartão de Débito',                                              'VT_NAT2'),
+    ('3',  'Boleto de transações próprias',                                 'VT_NAT3'),
+    ('4',  'Transferência de Recursos',                                     'VT_NAT4'),
+    ('5',  'Pagamento em dinheiro ou outra estrutura',                      NULL),
+    ('6',  'PIX',                                                           'VT_NAT6'),
+    ('7',  'Voucher e cartão pré-pago',                                     NULL),
+    ('8',  'Saque/troco em estabelecimento ou PIX Saque/Troco',            NULL),
+    ('11', 'Recepção de boletos/guias de terceiros e recargas de celular',  NULL),
+    ('12', 'PIX Garantido',                                                 'VT_PIX_GAR');
+
+INSERT OR IGNORE INTO lkp_ind_split (codigo, descricao) VALUES
+    ('0', 'Não splitado'),
+    ('1', 'Splitado');
+
+INSERT OR IGNORE INTO lkp_ind_nat_jur (codigo, descricao) VALUES
+    ('0', 'CPF (Pessoa Física)'),
+    ('1', 'CNPJ (Pessoa Jurídica)');
+
+INSERT OR IGNORE INTO lkp_ind_tp_pix (codigo, descricao) VALUES
+    ('0', 'Dinâmico'),
+    ('1', 'Não Dinâmico');
 """
 
 
 def criar_banco(db_path: Path) -> None:
-    """Cria o banco e aplica o schema (idempotente)."""
+    """Cria o banco, aplica o schema e semeia os lookups (idempotente)."""
     with sqlite3.connect(db_path) as conn:
         conn.executescript(_DDL)
+        conn.executescript(_SEED)
 
 
 # ---------------------------------------------------------------------------
@@ -234,15 +286,16 @@ def processar_lote(db_path: Path, caminho_dimp: Path) -> dict:
             conn.executemany(
                 "INSERT INTO reg_1115 "
                 "(chave_pai_1110, chave_lote, nsu, cod_aut, id_transac, "
-                " natureza, hora, valor, qtd) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " ind_split, bandeira, hora, valor, nat_oper, geo, ind_nat_jur, ind_tp_pix) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
                         f"{chave_tx}|{_chave_1110(r.pai_1110)}",
                         chave_lote,
                         r.nsu, r.cod_aut, r.id_transac,
-                        r.natureza_operacao, r.hora,
-                        str(r.valor_transacao), r.qtd,
+                        r.ind_split, r.bandeira, r.hora,
+                        str(r.valor_transacao), r.nat_oper,
+                        r.geo, r.ind_nat_jur, r.ind_tp_pix,
                     )
                     for r in rows_1115
                 ],

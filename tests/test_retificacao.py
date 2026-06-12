@@ -22,7 +22,7 @@ _CABECALHO_00000 = "|00000|20260513|144444|\n"
 _CABECALHO_0000 = "|0000|09|{finalidade}|PB|{cnpj}|EMPRESA TESTE|{dt_ini}|{dt_fin}|1|{competencia}|\n"
 _REG_1100 = "|1100|00000000000000|999|0|{ind_extemp}|{dt_ini}|{dt_fin}|100,00|1|\n"
 _REG_1110 = "|1110|TERM001|20260401|100,00|1|{cnpj}|\n"
-_REG_1115 = "|1115|NSU001||ID001|0|01|000000|100,00|1|\n"
+_REG_1115 = "|1115|NSU001||ID001|0|01|000000|100,00|1||||\n"
 _REG_1200 = "|1200|campo1|campo2|\n"
 _REG_1600 = "|1600|campo1|campo2|\n"
 
