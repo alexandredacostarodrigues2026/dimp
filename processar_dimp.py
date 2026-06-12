@@ -265,6 +265,10 @@ def chave_00000(r: "Registro00000") -> str:
     return f"{r.dt_tx}|{r.hora_tx}"
 
 
+def chave_0000(r: "Registro0000") -> str:
+    return r.cnpj_ip
+
+
 def chave_1100(r: "Registro1100") -> str:
     return f"{r.cod_cliente}|{r.dt_ini}|{r.dt_fin}"
 

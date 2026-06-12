@@ -19,10 +19,13 @@ from processar_dimp import (
     EventoDimp,
     Registro00000,
     Registro0000,
+    Registro0100,
+    Registro0200,
     Registro1100,
     Registro1110,
     Registro1115,
     chave_00000,
+    chave_0000,
     chave_1100,
     chave_1110,
     parse_dimp,
@@ -43,7 +46,11 @@ ARQUIVO_EXEMPLO = Path(os.environ.get("DIMP_ARQUIVO_EXEMPLO", _ARQUIVO_EXEMPLO_P
 REGISTROS_ALVO = ("00000", "0000", "0100", "0200", "1100", "1110", "1115")
 
 
-def serializar_registro(evento: EventoDimp, ultimo_chave_00000: str = "") -> dict[str, Any]:
+def serializar_registro(
+    evento: EventoDimp,
+    chave_tx: str = "",
+    chave_ip: str = "",
+) -> dict[str, Any]:
     registro = evento.registro
     if is_dataclass(registro):
         dados = {
@@ -54,13 +61,19 @@ def serializar_registro(evento: EventoDimp, ultimo_chave_00000: str = "") -> dic
         if isinstance(registro, Registro00000):
             dados["chave_00000"] = chave_00000(registro)
         elif isinstance(registro, Registro0000):
-            dados["chave_pai_00000"] = ultimo_chave_00000
+            dados["chave_pai_00000"] = chave_tx
+            dados["chave_0000"] = chave_0000(registro)
+        elif isinstance(registro, (Registro0100, Registro0200)):
+            dados["chave_pai_0000"] = chave_ip
         elif isinstance(registro, Registro1100):
+            dados["chave_pai_0000"] = chave_ip
             dados["chave_1100"] = chave_1100(registro)
         elif isinstance(registro, Registro1110):
+            dados["chave_pai_0000"] = chave_ip
             dados["chave_pai_1100"] = chave_1100(registro.pai_1100)
             dados["chave_1110"] = chave_1110(registro)
         elif isinstance(registro, Registro1115):
+            dados["chave_pai_0000"] = chave_ip
             dados["chave_pai_1110"] = chave_1110(registro.pai_1110)
             dados["chave_pai_1100"] = chave_1100(registro.pai_1110.pai_1100)
     else:
@@ -74,13 +87,16 @@ def carregar_eventos(caminho: str, limite: int) -> tuple[dict[str, list[dict[str
     contagem: Counter[str] = Counter()
     tabelas: dict[str, list[dict[str, Any]]] = {reg: [] for reg in REGISTROS_ALVO}
     chave_tx_ativa = ""
+    chave_ip_ativa = ""
 
     for evento in parse_dimp(Path(caminho)):
         contagem[evento.reg] += 1
         if evento.reg in REGISTROS_ALVO and len(tabelas[evento.reg]) < limite:
-            row = serializar_registro(evento, chave_tx_ativa)
+            row = serializar_registro(evento, chave_tx_ativa, chave_ip_ativa)
             if evento.reg == "00000":
                 chave_tx_ativa = row.get("chave_00000", "")
+            elif evento.reg == "0000":
+                chave_ip_ativa = row.get("chave_0000", "")
             tabelas[evento.reg].append(row)
 
     return tabelas, dict(contagem)
