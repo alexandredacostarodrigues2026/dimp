@@ -175,34 +175,32 @@ def gerar_comparacao(caminho: str) -> tuple[list[dict], list[dict]]:
             comp_1100[k] = {
                 "cod_cliente": ev.registro.cod_cliente,
                 "declarado": ev.registro.valor,
-                "soma_1115": _D("0"),
+                "soma_1110": _D("0"),
             }
         elif ev.reg == "1110":
             k_pai = f"{chave_tx}|{chave_1100(ev.registro.pai_1100)}"
             k = f"{chave_tx}|{chave_1110(ev.registro)}"
+            if k_pai in comp_1100:
+                comp_1100[k_pai]["soma_1110"] += ev.registro.valor_total_diario
             comp_1110[k] = {
                 "cod_cliente": ev.registro.pai_1100.cod_cliente,
                 "cod_mcapt": ev.registro.cod_mcapt,
                 "dt_operacao": ev.registro.dt_operacao,
                 "declarado": ev.registro.valor_total_diario,
                 "soma_1115": _D("0"),
-                "_k_1100": k_pai,
             }
         elif ev.reg == "1115":
-            k_pai_1110 = f"{chave_tx}|{chave_1110(ev.registro.pai_1110)}"
-            if k_pai_1110 in comp_1110:
-                comp_1110[k_pai_1110]["soma_1115"] += ev.registro.valor_transacao
-                k_pai_1100 = comp_1110[k_pai_1110]["_k_1100"]
-                if k_pai_1100 in comp_1100:
-                    comp_1100[k_pai_1100]["soma_1115"] += ev.registro.valor_transacao
+            k_pai = f"{chave_tx}|{chave_1110(ev.registro.pai_1110)}"
+            if k_pai in comp_1110:
+                comp_1110[k_pai]["soma_1115"] += ev.registro.valor_transacao
 
     linhas_1100 = []
     for d in comp_1100.values():
-        dif = d["declarado"] - d["soma_1115"]
+        dif = d["declarado"] - d["soma_1110"]
         linhas_1100.append({
             "cod_cliente": d["cod_cliente"],
             "1100_declarado": _fmt(d["declarado"]),
-            "soma_1115": _fmt(d["soma_1115"]),
+            "soma_1110": _fmt(d["soma_1110"]),
             "diferenca": _fmt(dif),
             "status": "OK" if dif == 0 else "DIVERGENTE",
         })
@@ -520,14 +518,14 @@ try:
     div_1110 = sum(1 for r in comp_1110 if r["status"] == "DIVERGENTE")
 
     col_c1, col_c2 = st.columns(2)
-    col_c1.metric("Divergências 1100 vs soma 1115", div_1100,
+    col_c1.metric("Divergências 1100 vs soma 1110", div_1100,
                   delta=None if div_1100 == 0 else f"{div_1100} clientes",
                   delta_color="inverse")
     col_c2.metric("Divergências 1110 vs soma 1115", div_1110,
                   delta=None if div_1110 == 0 else f"{div_1110} operações",
                   delta_color="inverse")
 
-    with st.expander(f"1100 vs soma 1115 — {len(comp_1100)} clientes"):
+    with st.expander(f"1100 vs soma 1110 — {len(comp_1100)} clientes"):
         st.dataframe(comp_1100, use_container_width=True, hide_index=True)
         st.download_button("Exportar CSV", gerar_csv(comp_1100),
                            "comparacao_1100.csv", "text/csv", key="exp_comp_1100")
@@ -691,8 +689,8 @@ else:
                             row["valor_total"] = _fmt(row["valor_total"])
                         return rows
 
-                    tab_rs, tab_data, tab_nat = st.tabs([
-                        "Por Razão Social", "Por Data", "Por Natureza de Op.",
+                    tab_rs, tab_data, tab_nsu, tab_nat = st.tabs([
+                        "Por Razão Social", "Por Data", "Por NSU", "Por Natureza de Op.",
                     ])
 
                     with tab_rs:
@@ -707,6 +705,25 @@ else:
                                          sort_key=lambda x: x["dt_operacao"]),
                             use_container_width=True, hide_index=True,
                         )
+
+                    with tab_nsu:
+                        nsu_rows = sorted(
+                            [
+                                {
+                                    "dt_operacao": r["dt_operacao"],
+                                    "hora":        r["hora"],
+                                    "nsu":         r["nsu"],
+                                    "cod_aut":     r["cod_aut"],
+                                    "nat_oper_desc": r["nat_oper_desc"],
+                                    "bandeira":    r["bandeira"],
+                                    "ind_nat_jur": r["ind_nat_jur"],
+                                    "valor":       r["valor"],
+                                }
+                                for r in resultados
+                            ],
+                            key=lambda x: (x["dt_operacao"], x["nsu"]),
+                        )
+                        st.dataframe(nsu_rows, use_container_width=True, hide_index=True)
 
                     with tab_nat:
                         acum_nat: dict[str, dict] = {}
