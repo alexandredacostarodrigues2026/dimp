@@ -624,6 +624,7 @@ _SQL_CONSULTA_1110 = """
         r11.cod_mcapt,
         r2.marca,
         r2.tipo_tecnologia,
+        lt.descricao AS tipo_tecn_desc,
         r11.dt_operacao,
         r11.cnpj_liq,
         r11.valor_total,
@@ -633,6 +634,7 @@ _SQL_CONSULTA_1110 = """
     JOIN lote     l    ON l.chave_lote = r1.chave_lote
     JOIN reg_1110 r11  ON r11.chave_pai_1100 = r1.chave_1100
     LEFT JOIN reg_0200 r2 ON r2.cnpj_ip = l.cnpj_ip AND r2.cod_mcapt = r11.cod_mcapt
+    LEFT JOIN lkp_tipo_tecnologia lt ON lt.codigo = r2.tipo_tecnologia
     WHERE REPLACE(REPLACE(REPLACE(r0.cnpj, '.', ''), '/', ''), '-', '') = ?
        OR REPLACE(REPLACE(r0.cpf, '.', ''), '-', '') = ?
     ORDER BY r11.dt_operacao, r11.cod_mcapt
@@ -785,9 +787,10 @@ else:
                             acum_mcapt: dict = {}
                             for r in resultados_1110:
                                 k = r.get("tipo_tecnologia") or r["cod_mcapt"] or "—"
+                                label = r.get("tipo_tecn_desc") or k
                                 if k not in acum_mcapt:
                                     acum_mcapt[k] = {
-                                        "tipo_tecnologia": k,
+                                        "tipo_tecnologia": label,
                                         "qtd_total": 0,
                                         "valor_total": _D("0"),
                                     }

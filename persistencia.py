@@ -141,6 +141,10 @@ CREATE TABLE IF NOT EXISTS lkp_ind_tp_pix (
     codigo    TEXT PRIMARY KEY,
     descricao TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS lkp_tipo_tecnologia (
+    codigo    TEXT PRIMARY KEY,
+    descricao TEXT NOT NULL
+);
 """
 
 _SEED = """
@@ -167,6 +171,16 @@ INSERT OR IGNORE INTO lkp_ind_nat_jur (codigo, descricao) VALUES
 INSERT OR IGNORE INTO lkp_ind_tp_pix (codigo, descricao) VALUES
     ('0', 'Dinâmico'),
     ('1', 'Não Dinâmico');
+
+INSERT OR IGNORE INTO lkp_tipo_tecnologia (codigo, descricao) VALUES
+    ('1', 'TEF-POS Integrados'),
+    ('2', 'Mobile'),
+    ('3', 'POS'),
+    ('4', 'E-commerce'),
+    ('6', 'URA / MOTO / Backoffice / Atendimento'),
+    ('7', 'Pagamento em Dinheiro / Outra Estrutura'),
+    ('8', 'Conta Individual'),
+    ('9', 'Conta Conjunta');
 """
 
 
@@ -179,6 +193,8 @@ def criar_banco(db_path: Path) -> None:
         colunas_1110 = {r[1] for r in conn.execute("PRAGMA table_info(reg_1110)")}
         if "cnpj_liq" not in colunas_1110:
             conn.execute("ALTER TABLE reg_1110 ADD COLUMN cnpj_liq TEXT")
+        # Seed de novas tabelas lookup em bancos antigos
+        conn.executescript(_SEED)
 
 
 # ---------------------------------------------------------------------------
