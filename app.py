@@ -222,6 +222,69 @@ def gerar_comparacao(caminho: str) -> tuple[list[dict], list[dict]]:
 
 
 @st.cache_data(show_spinner=False)
+def gerar_auditoria_qtd(caminho: str) -> tuple[list[dict], list[dict]]:
+    """Passagem completa comparando quantidades declaradas vs soma dos filhos."""
+    aud_1100: dict[str, dict] = {}
+    aud_1110: dict[str, dict] = {}
+    chave_tx = ""
+
+    for ev in parse_dimp(Path(caminho)):
+        if ev.reg == "00000":
+            chave_tx = f"{ev.registro.dt_tx}|{ev.registro.hora_tx}"  # type: ignore[union-attr]
+        elif ev.reg == "0000":
+            chave_tx = f"{ev.registro.cnpj_ip}|{chave_tx}"           # type: ignore[union-attr]
+        elif ev.reg == "1100":
+            k = f"{chave_tx}|{chave_1100(ev.registro)}"
+            aud_1100[k] = {
+                "cod_cliente": ev.registro.cod_cliente,
+                "qtd_1100": ev.registro.qtd,
+                "soma_qtd_1110": 0,
+            }
+        elif ev.reg == "1110":
+            k_pai = f"{chave_tx}|{chave_1100(ev.registro.pai_1100)}"
+            k = f"{chave_tx}|{chave_1110(ev.registro)}"
+            if k_pai in aud_1100:
+                aud_1100[k_pai]["soma_qtd_1110"] += ev.registro.qtd_total
+            aud_1110[k] = {
+                "cod_cliente": ev.registro.pai_1100.cod_cliente,
+                "cod_mcapt": ev.registro.cod_mcapt,
+                "dt_operacao": ev.registro.dt_operacao,
+                "qtd_1110": ev.registro.qtd_total,
+                "count_1115": 0,
+            }
+        elif ev.reg == "1115":
+            k_pai = f"{chave_tx}|{chave_1110(ev.registro.pai_1110)}"
+            if k_pai in aud_1110:
+                aud_1110[k_pai]["count_1115"] += 1
+
+    linhas_1100 = []
+    for d in aud_1100.values():
+        dif = d["qtd_1100"] - d["soma_qtd_1110"]
+        linhas_1100.append({
+            "cod_cliente":    d["cod_cliente"],
+            "qtd_1100":       d["qtd_1100"],
+            "soma_qtd_1110":  d["soma_qtd_1110"],
+            "diferença":      dif,
+            "status":         "OK" if dif == 0 else "DIVERGENTE",
+        })
+
+    linhas_1110 = []
+    for d in aud_1110.values():
+        dif = d["qtd_1110"] - d["count_1115"]
+        linhas_1110.append({
+            "cod_cliente": d["cod_cliente"],
+            "cod_mcapt":   d["cod_mcapt"],
+            "dt_operacao": d["dt_operacao"],
+            "qtd_1110":    d["qtd_1110"],
+            "count_1115":  d["count_1115"],
+            "diferença":   dif,
+            "status":      "OK" if dif == 0 else "DIVERGENTE",
+        })
+
+    return linhas_1100, linhas_1110
+
+
+@st.cache_data(show_spinner=False)
 def gerar_validacao(caminho: str) -> tuple[list[dict], list[dict]]:
     """Passagem completa: detecta registros 1100/1110 sem cadastro em 0100/0200."""
     clientes: set[str] = set()
@@ -537,6 +600,37 @@ try:
 
 except Exception as exc:
     st.error(f"Erro ao gerar comparação: {exc}")
+
+st.divider()
+st.subheader("Auditoria de Quantidades")
+
+try:
+    with st.spinner("Auditando quantidades..."):
+        aud_qtd_1100, aud_qtd_1110 = gerar_auditoria_qtd(caminho)
+
+    div_q1100 = sum(1 for r in aud_qtd_1100 if r["status"] == "DIVERGENTE")
+    div_q1110 = sum(1 for r in aud_qtd_1110 if r["status"] == "DIVERGENTE")
+
+    col_a1, col_a2 = st.columns(2)
+    col_a1.metric("Divergências QTD 1100 vs soma 1110", div_q1100,
+                  delta=None if div_q1100 == 0 else f"{div_q1100} clientes",
+                  delta_color="inverse")
+    col_a2.metric("Divergências QTD 1110 vs contagem 1115", div_q1110,
+                  delta=None if div_q1110 == 0 else f"{div_q1110} operações",
+                  delta_color="inverse")
+
+    with st.expander(f"1100 vs soma QTD 1110 — {len(aud_qtd_1100)} clientes"):
+        st.dataframe(aud_qtd_1100, use_container_width=True, hide_index=True)
+        st.download_button("Exportar CSV", gerar_csv(aud_qtd_1100),
+                           "auditoria_qtd_1100.csv", "text/csv", key="aud_qtd_1100")
+
+    with st.expander(f"1110 vs contagem 1115 — {len(aud_qtd_1110)} operações diárias"):
+        st.dataframe(aud_qtd_1110, use_container_width=True, hide_index=True)
+        st.download_button("Exportar CSV", gerar_csv(aud_qtd_1110),
+                           "auditoria_qtd_1110.csv", "text/csv", key="aud_qtd_1110")
+
+except Exception as exc:
+    st.error(f"Erro ao gerar auditoria de quantidades: {exc}")
 
 st.divider()
 st.subheader("Validação de Cadastro vs Operações")
