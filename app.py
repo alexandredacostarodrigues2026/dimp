@@ -831,69 +831,25 @@ else:
                     def _fmt(v: _D) -> str:
                         return f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
+                    _QTD_1115 = "Qtd. de Comprovantes (1115)"
+                    _QTD_1110 = "Qtd. Total Diária de Operações (1110)"
+
                     def _agrupar_por(chave: str, label: str, *, sort_key=None) -> list[dict]:
                         acum: dict = {}
                         for r in resultados:
                             k = r.get(chave, "") or ""
                             if k not in acum:
-                                acum[k] = {label: k, "qtd": 0, "valor_total": _D("0")}
-                            acum[k]["qtd"] += 1
+                                acum[k] = {label: k, _QTD_1115: 0, "valor_total": _D("0")}
+                            acum[k][_QTD_1115] += 1
                             acum[k]["valor_total"] += _d(r.get("valor", "0"))
                         rows = sorted(acum.values(), key=sort_key or (lambda x: x["valor_total"]), reverse=(sort_key is None))
                         for row in rows:
                             row["valor_total"] = _fmt(row["valor_total"])
                         return rows
 
-                    st.markdown("**1115 — Operações por Comprovante de Transação**")
-                    tab_rs, tab_data, tab_nat = st.tabs([
-                        "Por Razão Social", "Por Data", "Por Natureza de Op.",
-                    ])
-
-                    with tab_rs:
-                        st.dataframe(
-                            _agrupar_por("nome_razao_social", "razao_social"),
-                            use_container_width=True, hide_index=True,
-                        )
-
-                    with tab_data:
-                        st.dataframe(
-                            _agrupar_por("dt_operacao", "dt_operacao",
-                                         sort_key=lambda x: x["dt_operacao"]),
-                            use_container_width=True, hide_index=True,
-                        )
-
-                    with tab_nat:
-                        acum_nat: dict[str, dict] = {}
-                        for r in resultados:
-                            k = r["nat_oper"]
-                            if k not in acum_nat:
-                                acum_nat[k] = {
-                                    "nat_oper": k,
-                                    "descricao": r["nat_oper_desc"] or k,
-                                    "qtd": 0,
-                                    "valor_total": _D("0"),
-                                }
-                            acum_nat[k]["qtd"] += 1
-                            acum_nat[k]["valor_total"] += _d(r["valor"])
-                        resumo_nat = sorted(
-                            acum_nat.values(),
-                            key=lambda x: int(x["nat_oper"]) if x["nat_oper"].isdigit() else 99,
-                        )
-                        for rn in resumo_nat:
-                            rn["valor_total"] = _fmt(rn["valor_total"])
-                        st.dataframe(resumo_nat, use_container_width=True, hide_index=True)
-
-                    st.download_button(
-                        "Exportar CSV",
-                        gerar_csv(resultados),
-                        f"consulta_{doc_limpo}.csv",
-                        "text/csv",
-                    )
-
-                    # --- Resumo Mensal 1100 ---
+                    # --- 1100 Resumo Mensal ---
                     resultados_1100 = _consultar_1100(doc_limpo)
                     if resultados_1100:
-                        st.markdown("---")
                         st.markdown("**1100 — Resumo Mensal**")
                         linhas_1100 = []
                         for r in resultados_1100:
@@ -901,11 +857,11 @@ else:
                                 "DT_INI": r["dt_ini"],
                                 "DT_FIN": r["dt_fin"],
                                 "Valor": _fmt(_d(r["valor"])),
-                                "Quantidade de Operações": r["qtd"],
+                                "Quantidade de Operações (1100)": r["qtd"],
                             })
                         st.dataframe(linhas_1100, use_container_width=True, hide_index=True)
 
-                    # --- Operações Diárias 1110 ---
+                    # --- 1110 Operações Diárias ---
                     resultados_1110 = _consultar_1110(doc_limpo)
                     if resultados_1110:
                         st.markdown("---")
@@ -917,7 +873,6 @@ else:
                             except _IE:
                                 return _D("0")
 
-                        _QTD_1110 = "Qtd. total diária de operações"
                         tab_mcapt, tab_liq = st.tabs(["Por Meio de Captura", "Por CNPJ Liquidante"])
 
                         with tab_mcapt:
@@ -956,6 +911,54 @@ else:
                             for row in rows_liq:
                                 row["valor_total"] = _fmt(row["valor_total"])
                             st.dataframe(rows_liq, use_container_width=True, hide_index=True)
+
+                    # --- 1115 Operações por Comprovante ---
+                    st.markdown("---")
+                    st.markdown("**1115 — Operações por Comprovante de Transação**")
+                    tab_rs, tab_data, tab_nat = st.tabs([
+                        "Por Razão Social", "Por Data", "Por Natureza de Op.",
+                    ])
+
+                    with tab_rs:
+                        st.dataframe(
+                            _agrupar_por("nome_razao_social", "razao_social"),
+                            use_container_width=True, hide_index=True,
+                        )
+
+                    with tab_data:
+                        st.dataframe(
+                            _agrupar_por("dt_operacao", "dt_operacao",
+                                         sort_key=lambda x: x["dt_operacao"]),
+                            use_container_width=True, hide_index=True,
+                        )
+
+                    with tab_nat:
+                        acum_nat: dict[str, dict] = {}
+                        for r in resultados:
+                            k = r["nat_oper"]
+                            if k not in acum_nat:
+                                acum_nat[k] = {
+                                    "nat_oper": k,
+                                    "descricao": r["nat_oper_desc"] or k,
+                                    _QTD_1115: 0,
+                                    "valor_total": _D("0"),
+                                }
+                            acum_nat[k][_QTD_1115] += 1
+                            acum_nat[k]["valor_total"] += _d(r["valor"])
+                        resumo_nat = sorted(
+                            acum_nat.values(),
+                            key=lambda x: int(x["nat_oper"]) if x["nat_oper"].isdigit() else 99,
+                        )
+                        for rn in resumo_nat:
+                            rn["valor_total"] = _fmt(rn["valor_total"])
+                        st.dataframe(resumo_nat, use_container_width=True, hide_index=True)
+
+                    st.download_button(
+                        "Exportar CSV",
+                        gerar_csv(resultados),
+                        f"consulta_{doc_limpo}.csv",
+                        "text/csv",
+                    )
 
             except Exception as exc:
                 st.error(f"Erro na consulta: {exc}")
