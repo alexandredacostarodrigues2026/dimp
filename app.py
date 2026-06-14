@@ -782,6 +782,7 @@ else:
                             except _IE:
                                 return _D("0")
 
+                        _QTD_1110_1110 = "Qtd. total diária de operações"
                         tab_mcapt, tab_liq = st.tabs(["Por Meio de Captura", "Por CNPJ Liquidante"])
 
                         with tab_mcapt:
@@ -792,10 +793,10 @@ else:
                                 if k not in acum_mcapt:
                                     acum_mcapt[k] = {
                                         "tipo_tecnologia": label,
-                                        "qtd_total": 0,
+                                        _QTD_1110: 0,
                                         "valor_total": _D("0"),
                                     }
-                                acum_mcapt[k]["qtd_total"] += r.get("qtd_total") or 0
+                                acum_mcapt[k][_QTD_1110] += r.get("qtd_total") or 0
                                 acum_mcapt[k]["valor_total"] += _d1110(r.get("valor_total"))
                             rows_mcapt = sorted(acum_mcapt.values(),
                                                 key=lambda x: x["valor_total"], reverse=True)
@@ -810,10 +811,10 @@ else:
                                 if k not in acum_liq:
                                     acum_liq[k] = {
                                         "cnpj_liq": k,
-                                        "qtd_total": 0,
+                                        _QTD_1110: 0,
                                         "valor_total": _D("0"),
                                     }
-                                acum_liq[k]["qtd_total"] += r.get("qtd_total") or 0
+                                acum_liq[k][_QTD_1110] += r.get("qtd_total") or 0
                                 acum_liq[k]["valor_total"] += _d1110(r.get("valor_total"))
                             rows_liq = sorted(acum_liq.values(),
                                               key=lambda x: x["valor_total"], reverse=True)
