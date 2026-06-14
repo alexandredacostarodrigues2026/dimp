@@ -784,12 +784,10 @@ else:
                         with tab_mcapt:
                             acum_mcapt: dict = {}
                             for r in resultados_1110:
-                                k = r["cod_mcapt"] or ""
-                                label = r.get("marca") or k
+                                k = r.get("tipo_tecnologia") or r["cod_mcapt"] or "—"
                                 if k not in acum_mcapt:
                                     acum_mcapt[k] = {
-                                        "meio_captura": label,
-                                        "tipo_tecnologia": r.get("tipo_tecnologia") or "—",
+                                        "tipo_tecnologia": k,
                                         "qtd_total": 0,
                                         "valor_total": _D("0"),
                                     }
