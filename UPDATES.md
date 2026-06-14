@@ -2,6 +2,31 @@
 
 ---
 
+## 2026-06-14 — Consulta CPF/CNPJ: seções 1100/1110/1115 com tabelas centralizadas e auditoria de quantidades
+
+### `persistencia.py`
+- Nova tabela `lkp_tipo_tecnologia` com 8 valores (1=TEF-POS Integrados … 9=Conta Conjunta), semeada em `criar_banco`.
+- Campo `cnpj_liq` adicionado à tabela `reg_1110` (era `cnpj_ip`, errado — campo 06 do PDF é CNPJ_LIQ).
+- Migração incremental via `PRAGMA table_info + ALTER TABLE` para DBs existentes.
+
+### `processar_dimp.py`
+- `Registro1110`: renomeado `cnpj_ip` → `cnpj_liq` (campo 06 = CNPJ do liquidante, conforme PDF DIMP V10).
+
+### `app.py` — Consulta CPF/CNPJ
+- Resultados reordenados: **1100 → 1110 → 1115**.
+- **Seção 1100 — Resumo Mensal**: tabela com DT_INI, DT_FIN, Quantidade de Operações (1100), Valor. Espaço visual (`margin-top: 1.5rem`) entre KPIs e tabela.
+- **Seção 1110 — Operações Diárias**: 2 tabs — "Por Meio de Captura" (agrupa por `tipo_tecnologia` com descrição de `lkp_tipo_tecnologia`) e "Por CNPJ Liquidante".
+- **Seção 1115 — Comprovantes**: 3 tabs — "Por Razão Social", "Por Data", "Por Natureza de Op." (tab NSU removida).
+- Todas as tabelas usam `_tabela_html()` — renderização HTML/CSS com dados e cabeçalhos centralizados.
+- Colunas de quantidade com separador de milhar (ponto, padrão BR) em todas as seções.
+- Nomes descritivos nas colunas de QTD: `Qtd. de Comprovantes (1115)` e `Qtd. Total Diária de Operações (1110)`.
+
+### `app.py` — Auditoria de Quantidades (nova seção)
+- `gerar_auditoria_qtd()`: passagem única comparando QTD declarada no 1100 vs soma de `qtd_total` nos 1110 vs contagem de 1115.
+- Dois painéis: divergências 1100 vs 1110 (por cliente) e 1110 vs 1115 (por operação diária).
+
+---
+
 ## 2026-06-12 — Ligações cadastrais 0100↔1100 e 0200↔1110 com validação V10
 
 ### Problema resolvido

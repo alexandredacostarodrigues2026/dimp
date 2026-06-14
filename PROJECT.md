@@ -100,6 +100,7 @@ Gerado ao chamar `processar_lote(db_path, caminho_dimp)`.
 | `lkp_ind_split` | `codigo` | 0=não splitado, 1=splitado |
 | `lkp_ind_nat_jur` | `codigo` | 0=CPF(PF), 1=CNPJ(PJ) |
 | `lkp_ind_tp_pix` | `codigo` | 0=Dinâmico, 1=Não Dinâmico |
+| `lkp_tipo_tecnologia` | `codigo` | 1=TEF-POS Integrados, 2=Mobile, 3=POS, 4=E-commerce, 6=URA/MOTO, 7=Dinheiro/Outra, 8=Conta Individual, 9=Conta Conjunta |
 
 ### Ligações cadastrais
 
@@ -131,6 +132,17 @@ for evento in parse_dimp(Path("arquivo.txt")):
 Valida automaticamente a soma de `1115` dentro de cada `1110`, e a soma de `1110` dentro de cada `1100`, emitindo `WARNING` em caso de divergência.
 
 Linhas malformadas são ignoradas com `WARNING` em vez de abortar o arquivo.
+
+## Seções do app Streamlit
+
+| Seção | Descrição |
+|---|---|
+| Extração de ZIP | Painel lateral — extrai ZIP, prepende ELP, copia para raiz de `extraidos/` |
+| Tabelas por registro | Abas 00000 / 0000 / 0100 / 0200 / 1100 / 1110 / 1115 com busca e exportação CSV |
+| Comparação de Valores | 1100 vs soma 1110 · 1110 vs soma 1115 — divergências com status OK/DIVERGENTE |
+| Validação Cadastral | Órfãos 0100↔1100 e 0200↔1110 |
+| Consulta CPF/CNPJ | KPIs + tabelas 1100/1110/1115 centralizadas (HTML), com separador de milhar nas quantidades |
+| Auditoria de Quantidades | Compara QTD 1100 vs soma 1110 vs contagem 1115 |
 
 ## Arquivos de análise disponíveis
 
