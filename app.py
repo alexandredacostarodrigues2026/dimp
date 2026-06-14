@@ -782,7 +782,7 @@ else:
                             except _IE:
                                 return _D("0")
 
-                        _QTD_1110_1110 = "Qtd. total diária de operações"
+                        _QTD_1110 = "Qtd. total diária de operações"
                         tab_mcapt, tab_liq = st.tabs(["Por Meio de Captura", "Por CNPJ Liquidante"])
 
                         with tab_mcapt:
