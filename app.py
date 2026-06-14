@@ -30,7 +30,7 @@ from processar_dimp import (
     chave_1110,
     parse_dimp,
 )
-from persistencia import processar_lote
+from persistencia import criar_banco, processar_lote
 
 
 
@@ -660,6 +660,7 @@ def _consultar_1110(documento: str) -> list[dict]:
 if not DB_PATH.exists():
     st.info("Banco ainda não gerado. Selecione um arquivo e clique em **Salvar no banco** no painel lateral.")
 else:
+    criar_banco(DB_PATH)  # garante DDL e seeds atualizados em bancos existentes
     col_doc, col_btn = st.columns([4, 1])
     termo = col_doc.text_input(
         "CPF ou CNPJ do cliente",
