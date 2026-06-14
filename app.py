@@ -615,6 +615,19 @@ _SQL_CONSULTA = """
 """
 
 
+_SQL_CONSULTA_1100 = """
+    SELECT
+        r1.dt_ini,
+        r1.dt_fin,
+        r1.valor,
+        r1.qtd
+    FROM reg_0100 r0
+    JOIN reg_1100 r1 ON r0.cnpj_ip = r1.cnpj_ip AND r0.cod_cliente = r1.cod_cliente
+    WHERE REPLACE(REPLACE(REPLACE(r0.cnpj, '.', ''), '/', ''), '-', '') = ?
+       OR REPLACE(REPLACE(r0.cpf, '.', ''), '-', '') = ?
+    ORDER BY r1.dt_ini
+"""
+
 _SQL_CONSULTA_1110 = """
     SELECT
         r0.nome_razao_social,
@@ -646,6 +659,14 @@ def _consultar(documento: str) -> list[dict]:
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(_SQL_CONSULTA, (doc, doc)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _consultar_1100(documento: str) -> list[dict]:
+    doc = re.sub(r"\D", "", documento)
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(_SQL_CONSULTA_1100, (doc, doc)).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -769,6 +790,21 @@ else:
                         f"consulta_{doc_limpo}.csv",
                         "text/csv",
                     )
+
+                    # --- Resumo Mensal 1100 ---
+                    resultados_1100 = _consultar_1100(doc_limpo)
+                    if resultados_1100:
+                        st.markdown("---")
+                        st.markdown("**1100 — Resumo Mensal**")
+                        linhas_1100 = []
+                        for r in resultados_1100:
+                            linhas_1100.append({
+                                "DT_INI": r["dt_ini"],
+                                "DT_FIN": r["dt_fin"],
+                                "Valor": _fmt(_d(r["valor"])),
+                                "Quantidade de Operações": r["qtd"],
+                            })
+                        st.dataframe(linhas_1100, use_container_width=True, hide_index=True)
 
                     # --- Operações Diárias 1110 ---
                     resultados_1110 = _consultar_1110(doc_limpo)
