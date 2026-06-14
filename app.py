@@ -623,6 +623,7 @@ _SQL_CONSULTA_1110 = """
         r1.dt_fin,
         r11.cod_mcapt,
         r2.marca,
+        r2.tipo_tecnologia,
         r11.dt_operacao,
         r11.cnpj_liq,
         r11.valor_total,
@@ -788,6 +789,7 @@ else:
                                 if k not in acum_mcapt:
                                     acum_mcapt[k] = {
                                         "meio_captura": label,
+                                        "tipo_tecnologia": r.get("tipo_tecnologia") or "—",
                                         "qtd_total": 0,
                                         "valor_total": _D("0"),
                                     }
