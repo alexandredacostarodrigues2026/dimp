@@ -15,6 +15,8 @@ from typing import Any
 
 import streamlit as st
 
+import sqlite3
+
 from processar_dimp import (
     EventoDimp,
     Registro00000,
@@ -28,6 +30,7 @@ from processar_dimp import (
     chave_1110,
     parse_dimp,
 )
+from persistencia import processar_lote
 
 
 
@@ -256,6 +259,7 @@ def gerar_validacao(caminho: str) -> tuple[list[dict], list[dict]]:
 
 PASTA_ORIGINAIS = Path("originais")
 PASTA_EXTRAIDOS = Path("extraidos")
+DB_PATH = Path("dimp.db")
 
 
 def _extrair_zip_para_pasta(caminho_zip: Path) -> tuple[Path, list[str]]:
@@ -387,6 +391,26 @@ sidebar_extracao()
 st.sidebar.divider()
 caminho, nome_arquivo = caminho_origem()
 limite = st.sidebar.slider("Amostras carregadas", min_value=100, max_value=5000, value=1000, step=100)
+
+st.sidebar.divider()
+st.sidebar.header("Banco de Dados")
+_db_label = f"{'✔ ' if DB_PATH.exists() else ''}{DB_PATH.name}"
+st.sidebar.caption(_db_label)
+if st.sidebar.button("Salvar no banco", use_container_width=True, help="Persiste o arquivo selecionado no SQLite para consultas por CPF/CNPJ"):
+    if not Path(caminho).exists():
+        st.sidebar.error("Arquivo não encontrado.")
+    else:
+        try:
+            with st.spinner("Salvando no banco..."):
+                res = processar_lote(DB_PATH, Path(caminho))
+            st.sidebar.success(
+                f"Lote salvo — "
+                f"{res['inseridos_0100']} clientes, "
+                f"{res['inseridos_1100']} resumos, "
+                f"{res['inseridos_1115']:,} transações".replace(",", ".")
+            )
+        except Exception as exc:
+            st.sidebar.error(str(exc))
 
 if not Path(caminho).exists():
     st.error(f"Arquivo nao encontrado: {nome_arquivo}")
@@ -551,3 +575,131 @@ try:
 
 except Exception as exc:
     st.error(f"Erro ao gerar validação: {exc}")
+
+# ---------------------------------------------------------------------------
+# Consulta por CPF / CNPJ
+# ---------------------------------------------------------------------------
+
+st.divider()
+st.subheader("Consulta por CPF / CNPJ")
+
+_SQL_CONSULTA = """
+    SELECT
+        r0.nome_razao_social,
+        r0.cpf,
+        r0.cnpj,
+        l.cnpj_ip,
+        r1.cod_cliente,
+        r1.dt_ini,
+        r1.dt_fin,
+        r11.dt_operacao,
+        r11.cod_mcapt,
+        r5.nsu,
+        r5.cod_aut,
+        r5.hora,
+        r5.bandeira,
+        r5.nat_oper,
+        lk.descricao  AS nat_oper_desc,
+        r5.valor,
+        r5.ind_nat_jur,
+        r5.ind_tp_pix
+    FROM reg_0100 r0
+    JOIN reg_1100 r1  ON r0.cnpj_ip = r1.cnpj_ip AND r0.cod_cliente = r1.cod_cliente
+    JOIN lote     l   ON l.chave_lote = r1.chave_lote
+    JOIN reg_1110 r11 ON r11.chave_pai_1100 = r1.chave_1100
+    JOIN reg_1115 r5  ON r5.chave_pai_1110  = r11.chave_1110
+    LEFT JOIN lkp_nat_oper lk ON lk.codigo = r5.nat_oper
+    WHERE REPLACE(REPLACE(REPLACE(r0.cnpj, '.', ''), '/', ''), '-', '') = ?
+       OR REPLACE(REPLACE(r0.cpf, '.', ''), '-', '') = ?
+    ORDER BY r11.dt_operacao, r5.hora
+"""
+
+
+def _consultar(documento: str) -> list[dict]:
+    doc = re.sub(r"\D", "", documento)
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(_SQL_CONSULTA, (doc, doc)).fetchall()
+    return [dict(r) for r in rows]
+
+
+if not DB_PATH.exists():
+    st.info("Banco ainda não gerado. Selecione um arquivo e clique em **Salvar no banco** no painel lateral.")
+else:
+    col_doc, col_btn = st.columns([4, 1])
+    termo = col_doc.text_input(
+        "CPF ou CNPJ do cliente",
+        placeholder="Ex.: 123.456.789-00 ou 12.345.678/0001-90",
+        label_visibility="collapsed",
+    )
+    pesquisar = col_btn.button("Pesquisar", use_container_width=True)
+
+    if pesquisar and termo.strip():
+        doc_limpo = re.sub(r"\D", "", termo.strip())
+        if len(doc_limpo) not in (11, 14):
+            st.warning("Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.")
+        else:
+            try:
+                with st.spinner("Consultando..."):
+                    resultados = _consultar(doc_limpo)
+
+                if not resultados:
+                    st.info("Nenhuma transação encontrada para o documento informado no banco atual.")
+                else:
+                    r0 = resultados[0]
+                    st.markdown(
+                        f"**{r0['nome_razao_social']}** — "
+                        f"CPF `{r0['cpf'] or '—'}` | CNPJ `{r0['cnpj'] or '—'}` | "
+                        f"Cod. cliente `{r0['cod_cliente']}` | IP `{r0['cnpj_ip']}`"
+                    )
+
+                    from decimal import Decimal as _D, InvalidOperation as _IE
+                    def _d(v: str) -> _D:
+                        try:
+                            return _D(str(v).replace(",", ".")) if v else _D("0")
+                        except _IE:
+                            return _D("0")
+
+                    total = sum(_d(r["valor"]) for r in resultados)
+                    qtd   = len(resultados)
+
+                    col_m1, col_m2, col_m3 = st.columns(3)
+                    col_m1.metric("Transações", f"{qtd:,}".replace(",", "."))
+                    col_m2.metric(
+                        "Valor total (R$)",
+                        f"{total:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+                    )
+                    col_m3.metric("Período",
+                                  f"{r0['dt_ini'][:4]}-{r0['dt_ini'][4:6]}-{r0['dt_ini'][6:]} → "
+                                  f"{r0['dt_fin'][:4]}-{r0['dt_fin'][4:6]}-{r0['dt_fin'][6:]}")
+
+                    # Resumo por natureza de operação
+                    acum_nat: dict[str, dict] = {}
+                    for r in resultados:
+                        k = r["nat_oper"]
+                        if k not in acum_nat:
+                            acum_nat[k] = {"nat_oper": k, "descricao": r["nat_oper_desc"] or k,
+                                           "qtd": 0, "valor_total": _D("0")}
+                        acum_nat[k]["qtd"] += 1
+                        acum_nat[k]["valor_total"] += _d(r["valor"])
+
+                    resumo_nat = sorted(acum_nat.values(),
+                                        key=lambda x: int(x["nat_oper"]) if x["nat_oper"].isdigit() else 99)
+                    for rn in resumo_nat:
+                        v = rn["valor_total"]
+                        rn["valor_total"] = f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+                    with st.expander("Resumo por Natureza de Operação"):
+                        st.dataframe(resumo_nat, use_container_width=True, hide_index=True)
+
+                    st.dataframe(resultados, use_container_width=True, hide_index=True)
+
+                    st.download_button(
+                        "Exportar CSV",
+                        gerar_csv(resultados),
+                        f"consulta_{doc_limpo}.csv",
+                        "text/csv",
+                    )
+
+            except Exception as exc:
+                st.error(f"Erro na consulta: {exc}")
