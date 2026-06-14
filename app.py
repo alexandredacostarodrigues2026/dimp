@@ -249,36 +249,41 @@ def gerar_auditoria_qtd(caminho: str) -> tuple[list[dict], list[dict]]:
                 "cod_cliente": ev.registro.pai_1100.cod_cliente,
                 "cod_mcapt": ev.registro.cod_mcapt,
                 "dt_operacao": ev.registro.dt_operacao,
-                "qtd_1110": ev.registro.qtd_total,
-                "count_1115": 0,
+                "qtd_mensal_1100": aud_1100.get(k_pai, {}).get("qtd_1100", 0),
+                "qtd_total_diaria_1110": ev.registro.qtd_total,
+                "contagem_1115": 0,
             }
         elif ev.reg == "1115":
             k_pai = f"{chave_tx}|{chave_1110(ev.registro.pai_1110)}"
             if k_pai in aud_1110:
-                aud_1110[k_pai]["count_1115"] += 1
+                aud_1110[k_pai]["contagem_1115"] += 1
+
+    _C1100 = "Qtd. de Operações (1100)"
+    _C1110 = "Qtd. Total Diária (1110)"
 
     linhas_1100 = []
     for d in aud_1100.values():
         dif = d["qtd_1100"] - d["soma_qtd_1110"]
         linhas_1100.append({
-            "cod_cliente":    d["cod_cliente"],
-            "qtd_1100":       d["qtd_1100"],
-            "soma_qtd_1110":  d["soma_qtd_1110"],
-            "diferença":      dif,
-            "status":         "OK" if dif == 0 else "DIVERGENTE",
+            "cod_cliente": d["cod_cliente"],
+            _C1100:        d["qtd_1100"],
+            _C1110:        d["soma_qtd_1110"],
+            "diferença":   dif,
+            "status":      "OK" if dif == 0 else "DIVERGENTE",
         })
 
     linhas_1110 = []
     for d in aud_1110.values():
-        dif = d["qtd_1110"] - d["count_1115"]
+        dif = d["qtd_total_diaria_1110"] - d["contagem_1115"]
         linhas_1110.append({
-            "cod_cliente": d["cod_cliente"],
-            "cod_mcapt":   d["cod_mcapt"],
-            "dt_operacao": d["dt_operacao"],
-            "qtd_1110":    d["qtd_1110"],
-            "count_1115":  d["count_1115"],
-            "diferença":   dif,
-            "status":      "OK" if dif == 0 else "DIVERGENTE",
+            "cod_cliente":  d["cod_cliente"],
+            "cod_mcapt":    d["cod_mcapt"],
+            "dt_operacao":  d["dt_operacao"],
+            _C1100:         d["qtd_mensal_1100"],
+            _C1110:         d["qtd_total_diaria_1110"],
+            "Contagem 1115": d["contagem_1115"],
+            "diferença":    dif,
+            "status":       "OK" if dif == 0 else "DIVERGENTE",
         })
 
     return linhas_1100, linhas_1110
