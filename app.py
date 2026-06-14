@@ -13,6 +13,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
 
+import pandas as pd
 import streamlit as st
 
 import sqlite3
@@ -56,6 +57,10 @@ _NAT_OPER: dict[str, str] = {
 _IND_SPLIT:    dict[str, str] = {"0": "Não splitado", "1": "Splitado"}
 _IND_NAT_JUR:  dict[str, str] = {"0": "CPF (PF)", "1": "CNPJ (PJ)"}
 _IND_TP_PIX:   dict[str, str] = {"0": "Dinâmico",  "1": "Não Dinâmico"}
+
+def _centrado(dados: list[dict]) -> "pd.io.formats.style.Styler":
+    return pd.DataFrame(dados).style.set_properties(**{"text-align": "center"})
+
 
 _ARQUIVO_EXEMPLO_PADRAO = (
     "DIMP_09_PB_22896431000382_2026-02-01_2026-02-28_1_1_W0118266_17-03-2026_183030_PICPAY-INSTITUICAO-DE-PAGAMENT.txt"
@@ -872,7 +877,7 @@ else:
                                 "Valor": _fmt(_d(r["valor"])),
                                 "Quantidade de Operações (1100)": r["qtd"],
                             })
-                        st.dataframe(linhas_1100, use_container_width=True, hide_index=True)
+                        st.dataframe(_centrado(linhas_1100), use_container_width=True, hide_index=True)
 
                     # --- 1110 Operações Diárias ---
                     resultados_1110 = _consultar_1110(doc_limpo)
@@ -905,7 +910,7 @@ else:
                                                 key=lambda x: x["valor_total"], reverse=True)
                             for row in rows_mcapt:
                                 row["valor_total"] = _fmt(row["valor_total"])
-                            st.dataframe(rows_mcapt, use_container_width=True, hide_index=True)
+                            st.dataframe(_centrado(rows_mcapt), use_container_width=True, hide_index=True)
 
                         with tab_liq:
                             acum_liq: dict = {}
@@ -923,7 +928,7 @@ else:
                                               key=lambda x: x["valor_total"], reverse=True)
                             for row in rows_liq:
                                 row["valor_total"] = _fmt(row["valor_total"])
-                            st.dataframe(rows_liq, use_container_width=True, hide_index=True)
+                            st.dataframe(_centrado(rows_liq), use_container_width=True, hide_index=True)
 
                     # --- 1115 Operações por Comprovante ---
                     st.markdown("---")
@@ -934,14 +939,14 @@ else:
 
                     with tab_rs:
                         st.dataframe(
-                            _agrupar_por("nome_razao_social", "razao_social"),
+                            _centrado(_agrupar_por("nome_razao_social", "razao_social")),
                             use_container_width=True, hide_index=True,
                         )
 
                     with tab_data:
                         st.dataframe(
-                            _agrupar_por("dt_operacao", "dt_operacao",
-                                         sort_key=lambda x: x["dt_operacao"]),
+                            _centrado(_agrupar_por("dt_operacao", "dt_operacao",
+                                         sort_key=lambda x: x["dt_operacao"])),
                             use_container_width=True, hide_index=True,
                         )
 
@@ -964,7 +969,7 @@ else:
                         )
                         for rn in resumo_nat:
                             rn["valor_total"] = _fmt(rn["valor_total"])
-                        st.dataframe(resumo_nat, use_container_width=True, hide_index=True)
+                        st.dataframe(_centrado(list(resumo_nat)), use_container_width=True, hide_index=True)
 
                     st.download_button(
                         "Exportar CSV",
