@@ -58,8 +58,33 @@ _IND_SPLIT:    dict[str, str] = {"0": "Não splitado", "1": "Splitado"}
 _IND_NAT_JUR:  dict[str, str] = {"0": "CPF (PF)", "1": "CNPJ (PJ)"}
 _IND_TP_PIX:   dict[str, str] = {"0": "Dinâmico",  "1": "Não Dinâmico"}
 
-def _centrado(dados: list[dict]) -> "pd.io.formats.style.Styler":
-    return pd.DataFrame(dados).style.set_properties(**{"text-align": "center"})
+def _tabela_html(dados: list[dict]) -> None:
+    if not dados:
+        return
+    html = pd.DataFrame(dados).to_html(index=False, border=0, classes="_dimp_tbl")
+    st.markdown(f"""
+<style>
+table._dimp_tbl {{
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}}
+table._dimp_tbl th {{
+    background: #f0f2f6;
+    font-weight: 600;
+    text-align: center !important;
+    padding: 8px 12px;
+    border-bottom: 2px solid #d0d3db;
+}}
+table._dimp_tbl td {{
+    text-align: center !important;
+    padding: 7px 12px;
+    border-bottom: 1px solid #e8eaed;
+}}
+table._dimp_tbl tr:hover td {{ background: #f7f8fa; }}
+</style>
+{html}
+""", unsafe_allow_html=True)
 
 
 _ARQUIVO_EXEMPLO_PADRAO = (
@@ -868,16 +893,17 @@ else:
                     # --- 1100 Resumo Mensal ---
                     resultados_1100 = _consultar_1100(doc_limpo)
                     if resultados_1100:
+                        st.markdown("<div style='margin-top:1.5rem'></div>", unsafe_allow_html=True)
                         st.markdown("**1100 — Resumo Mensal**")
                         linhas_1100 = []
                         for r in resultados_1100:
                             linhas_1100.append({
                                 "DT_INI": r["dt_ini"],
                                 "DT_FIN": r["dt_fin"],
-                                "Valor": _fmt(_d(r["valor"])),
                                 "Quantidade de Operações (1100)": r["qtd"],
+                                "Valor": _fmt(_d(r["valor"])),
                             })
-                        st.dataframe(_centrado(linhas_1100), use_container_width=True, hide_index=True)
+                        _tabela_html(linhas_1100)
 
                     # --- 1110 Operações Diárias ---
                     resultados_1110 = _consultar_1110(doc_limpo)
@@ -910,7 +936,7 @@ else:
                                                 key=lambda x: x["valor_total"], reverse=True)
                             for row in rows_mcapt:
                                 row["valor_total"] = _fmt(row["valor_total"])
-                            st.dataframe(_centrado(rows_mcapt), use_container_width=True, hide_index=True)
+                            _tabela_html(rows_mcapt)
 
                         with tab_liq:
                             acum_liq: dict = {}
@@ -928,7 +954,7 @@ else:
                                               key=lambda x: x["valor_total"], reverse=True)
                             for row in rows_liq:
                                 row["valor_total"] = _fmt(row["valor_total"])
-                            st.dataframe(_centrado(rows_liq), use_container_width=True, hide_index=True)
+                            _tabela_html(rows_liq)
 
                     # --- 1115 Operações por Comprovante ---
                     st.markdown("---")
@@ -938,17 +964,11 @@ else:
                     ])
 
                     with tab_rs:
-                        st.dataframe(
-                            _centrado(_agrupar_por("nome_razao_social", "razao_social")),
-                            use_container_width=True, hide_index=True,
-                        )
+                        _tabela_html(_agrupar_por("nome_razao_social", "razao_social"))
 
                     with tab_data:
-                        st.dataframe(
-                            _centrado(_agrupar_por("dt_operacao", "dt_operacao",
-                                         sort_key=lambda x: x["dt_operacao"])),
-                            use_container_width=True, hide_index=True,
-                        )
+                        _tabela_html(_agrupar_por("dt_operacao", "dt_operacao",
+                                     sort_key=lambda x: x["dt_operacao"]))
 
                     with tab_nat:
                         acum_nat: dict[str, dict] = {}
@@ -969,7 +989,7 @@ else:
                         )
                         for rn in resumo_nat:
                             rn["valor_total"] = _fmt(rn["valor_total"])
-                        st.dataframe(_centrado(list(resumo_nat)), use_container_width=True, hide_index=True)
+                        _tabela_html(list(resumo_nat))
 
                     st.download_button(
                         "Exportar CSV",
