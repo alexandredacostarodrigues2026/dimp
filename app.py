@@ -720,6 +720,7 @@ else:
                             row["valor_total"] = _fmt(row["valor_total"])
                         return rows
 
+                    st.markdown("**Operações por Comprovante de Transação**")
                     tab_rs, tab_data, tab_nat = st.tabs([
                         "Por Razão Social", "Por Data", "Por Natureza de Op.",
                     ])
@@ -769,7 +770,7 @@ else:
                     resultados_1110 = _consultar_1110(doc_limpo)
                     if resultados_1110:
                         st.markdown("---")
-                        st.markdown("**Operações Diárias — 1110**")
+                        st.markdown("**Operações Diárias por Meio de Captura**")
 
                         def _d1110(v) -> _D:
                             try:
