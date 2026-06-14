@@ -224,7 +224,7 @@ class Registro1110:
     dt_operacao: str
     valor_total_diario: Decimal
     qtd_total: int
-    cnpj_ip: str
+    cnpj_liq: str   # campo 06 do spec: CNPJ do liquidante
     pai_1100: Registro1100
 
     @classmethod
@@ -234,7 +234,7 @@ class Registro1110:
             dt_operacao=campo(campos, 2),
             valor_total_diario=decimal_br(campo(campos, 3)),
             qtd_total=inteiro(campo(campos, 4)),
-            cnpj_ip=campo(campos, 5),
+            cnpj_liq=campo(campos, 5),
             pai_1100=pai_1100,
         )
 

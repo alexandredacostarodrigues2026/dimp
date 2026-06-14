@@ -96,7 +96,8 @@ CREATE TABLE IF NOT EXISTS reg_1110 (
     cod_mcapt       TEXT NOT NULL,
     dt_operacao     TEXT NOT NULL,
     valor_total     TEXT NOT NULL,
-    qtd_total       INTEGER NOT NULL
+    qtd_total       INTEGER NOT NULL,
+    cnpj_liq        TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_1110_pai
     ON reg_1110 (chave_pai_1100);
@@ -333,8 +334,8 @@ def processar_lote(db_path: Path, caminho_dimp: Path) -> dict:
             conn.executemany(
                 "INSERT OR REPLACE INTO reg_1110 "
                 "(chave_1110, chave_pai_1100, chave_lote, cod_mcapt, "
-                " dt_operacao, valor_total, qtd_total) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                " dt_operacao, valor_total, qtd_total, cnpj_liq) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
                         f"{chave_tx}|{_chave_1110(r)}",
@@ -342,6 +343,7 @@ def processar_lote(db_path: Path, caminho_dimp: Path) -> dict:
                         chave_lote,
                         r.cod_mcapt, r.dt_operacao,
                         str(r.valor_total_diario), r.qtd_total,
+                        r.cnpj_liq,
                     )
                     for r in rows_1110
                 ],

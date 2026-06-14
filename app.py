@@ -615,11 +615,42 @@ _SQL_CONSULTA = """
 """
 
 
+_SQL_CONSULTA_1110 = """
+    SELECT
+        r0.nome_razao_social,
+        r1.cod_cliente,
+        r1.dt_ini,
+        r1.dt_fin,
+        r11.cod_mcapt,
+        r2.marca,
+        r11.dt_operacao,
+        r11.cnpj_liq,
+        r11.valor_total,
+        r11.qtd_total
+    FROM reg_0100 r0
+    JOIN reg_1100 r1   ON r0.cnpj_ip = r1.cnpj_ip AND r0.cod_cliente = r1.cod_cliente
+    JOIN lote     l    ON l.chave_lote = r1.chave_lote
+    JOIN reg_1110 r11  ON r11.chave_pai_1100 = r1.chave_1100
+    LEFT JOIN reg_0200 r2 ON r2.cnpj_ip = l.cnpj_ip AND r2.cod_mcapt = r11.cod_mcapt
+    WHERE REPLACE(REPLACE(REPLACE(r0.cnpj, '.', ''), '/', ''), '-', '') = ?
+       OR REPLACE(REPLACE(r0.cpf, '.', ''), '-', '') = ?
+    ORDER BY r11.dt_operacao, r11.cod_mcapt
+"""
+
+
 def _consultar(documento: str) -> list[dict]:
     doc = re.sub(r"\D", "", documento)
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(_SQL_CONSULTA, (doc, doc)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _consultar_1110(documento: str) -> list[dict]:
+    doc = re.sub(r"\D", "", documento)
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(_SQL_CONSULTA_1110, (doc, doc)).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -689,8 +720,8 @@ else:
                             row["valor_total"] = _fmt(row["valor_total"])
                         return rows
 
-                    tab_rs, tab_data, tab_nsu, tab_nat = st.tabs([
-                        "Por Razão Social", "Por Data", "Por NSU", "Por Natureza de Op.",
+                    tab_rs, tab_data, tab_nat = st.tabs([
+                        "Por Razão Social", "Por Data", "Por Natureza de Op.",
                     ])
 
                     with tab_rs:
@@ -705,25 +736,6 @@ else:
                                          sort_key=lambda x: x["dt_operacao"]),
                             use_container_width=True, hide_index=True,
                         )
-
-                    with tab_nsu:
-                        nsu_rows = sorted(
-                            [
-                                {
-                                    "dt_operacao": r["dt_operacao"],
-                                    "hora":        r["hora"],
-                                    "nsu":         r["nsu"],
-                                    "cod_aut":     r["cod_aut"],
-                                    "nat_oper_desc": r["nat_oper_desc"],
-                                    "bandeira":    r["bandeira"],
-                                    "ind_nat_jur": r["ind_nat_jur"],
-                                    "valor":       r["valor"],
-                                }
-                                for r in resultados
-                            ],
-                            key=lambda x: (x["dt_operacao"], x["nsu"]),
-                        )
-                        st.dataframe(nsu_rows, use_container_width=True, hide_index=True)
 
                     with tab_nat:
                         acum_nat: dict[str, dict] = {}
@@ -752,6 +764,57 @@ else:
                         f"consulta_{doc_limpo}.csv",
                         "text/csv",
                     )
+
+                    # --- Operações Diárias 1110 ---
+                    resultados_1110 = _consultar_1110(doc_limpo)
+                    if resultados_1110:
+                        st.markdown("---")
+                        st.markdown("**Operações Diárias — 1110**")
+
+                        def _d1110(v) -> _D:
+                            try:
+                                return _D(str(v).replace(",", ".")) if v else _D("0")
+                            except _IE:
+                                return _D("0")
+
+                        tab_mcapt, tab_liq = st.tabs(["Por Meio de Captura", "Por CNPJ Liquidante"])
+
+                        with tab_mcapt:
+                            acum_mcapt: dict = {}
+                            for r in resultados_1110:
+                                k = r["cod_mcapt"] or ""
+                                if k not in acum_mcapt:
+                                    acum_mcapt[k] = {
+                                        "cod_mcapt": k,
+                                        "marca": r.get("marca") or "—",
+                                        "qtd_total": 0,
+                                        "valor_total": _D("0"),
+                                    }
+                                acum_mcapt[k]["qtd_total"] += r.get("qtd_total") or 0
+                                acum_mcapt[k]["valor_total"] += _d1110(r.get("valor_total"))
+                            rows_mcapt = sorted(acum_mcapt.values(),
+                                                key=lambda x: x["valor_total"], reverse=True)
+                            for row in rows_mcapt:
+                                row["valor_total"] = _fmt(row["valor_total"])
+                            st.dataframe(rows_mcapt, use_container_width=True, hide_index=True)
+
+                        with tab_liq:
+                            acum_liq: dict = {}
+                            for r in resultados_1110:
+                                k = r.get("cnpj_liq") or "—"
+                                if k not in acum_liq:
+                                    acum_liq[k] = {
+                                        "cnpj_liq": k,
+                                        "qtd_total": 0,
+                                        "valor_total": _D("0"),
+                                    }
+                                acum_liq[k]["qtd_total"] += r.get("qtd_total") or 0
+                                acum_liq[k]["valor_total"] += _d1110(r.get("valor_total"))
+                            rows_liq = sorted(acum_liq.values(),
+                                              key=lambda x: x["valor_total"], reverse=True)
+                            for row in rows_liq:
+                                row["valor_total"] = _fmt(row["valor_total"])
+                            st.dataframe(rows_liq, use_container_width=True, hide_index=True)
 
             except Exception as exc:
                 st.error(f"Erro na consulta: {exc}")
