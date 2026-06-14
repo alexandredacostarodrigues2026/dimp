@@ -874,6 +874,9 @@ else:
                     def _fmt(v: _D) -> str:
                         return f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
+                    def _fmtq(n) -> str:
+                        return f"{int(n):,}".replace(",", ".")
+
                     _QTD_1115 = "Qtd. de Comprovantes (1115)"
                     _QTD_1110 = "Qtd. Total Diária de Operações (1110)"
 
@@ -887,6 +890,7 @@ else:
                             acum[k]["valor_total"] += _d(r.get("valor", "0"))
                         rows = sorted(acum.values(), key=sort_key or (lambda x: x["valor_total"]), reverse=(sort_key is None))
                         for row in rows:
+                            row[_QTD_1115] = _fmtq(row[_QTD_1115])
                             row["valor_total"] = _fmt(row["valor_total"])
                         return rows
 
@@ -900,7 +904,7 @@ else:
                             linhas_1100.append({
                                 "DT_INI": r["dt_ini"],
                                 "DT_FIN": r["dt_fin"],
-                                "Quantidade de Operações (1100)": r["qtd"],
+                                "Quantidade de Operações (1100)": _fmtq(r["qtd"]),
                                 "Valor": _fmt(_d(r["valor"])),
                             })
                         _tabela_html(linhas_1100)
@@ -935,6 +939,7 @@ else:
                             rows_mcapt = sorted(acum_mcapt.values(),
                                                 key=lambda x: x["valor_total"], reverse=True)
                             for row in rows_mcapt:
+                                row[_QTD_1110] = _fmtq(row[_QTD_1110])
                                 row["valor_total"] = _fmt(row["valor_total"])
                             _tabela_html(rows_mcapt)
 
@@ -953,6 +958,7 @@ else:
                             rows_liq = sorted(acum_liq.values(),
                                               key=lambda x: x["valor_total"], reverse=True)
                             for row in rows_liq:
+                                row[_QTD_1110] = _fmtq(row[_QTD_1110])
                                 row["valor_total"] = _fmt(row["valor_total"])
                             _tabela_html(rows_liq)
 
@@ -988,6 +994,7 @@ else:
                             key=lambda x: int(x["nat_oper"]) if x["nat_oper"].isdigit() else 99,
                         )
                         for rn in resumo_nat:
+                            rn[_QTD_1115] = _fmtq(rn[_QTD_1115])
                             rn["valor_total"] = _fmt(rn["valor_total"])
                         _tabela_html(list(resumo_nat))
 
