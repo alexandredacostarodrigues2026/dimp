@@ -453,6 +453,19 @@ def caminho_origem() -> tuple[str, str]:
 
 st.set_page_config(page_title="Consulta DIMP", layout="wide")
 
+st.markdown("""
+<style>
+div[data-testid="stDataFrame"] div[role="gridcell"] {
+    text-align: center !important;
+    justify-content: center !important;
+}
+div[data-testid="stDataFrame"] div[role="columnheader"] {
+    text-align: center !important;
+    justify-content: center !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 st.title("Consulta DIMP")
 
 sidebar_extracao()
