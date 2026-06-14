@@ -175,6 +175,10 @@ def criar_banco(db_path: Path) -> None:
     with sqlite3.connect(db_path) as conn:
         conn.executescript(_DDL)
         conn.executescript(_SEED)
+        # Migrações incrementais — ADD COLUMN falha silenciosamente se já existir
+        colunas_1110 = {r[1] for r in conn.execute("PRAGMA table_info(reg_1110)")}
+        if "cnpj_liq" not in colunas_1110:
+            conn.execute("ALTER TABLE reg_1110 ADD COLUMN cnpj_liq TEXT")
 
 
 # ---------------------------------------------------------------------------
